@@ -1,8 +1,4 @@
 # chris Dev Environments — managed via GitHub Actions CI/CD
-locals {
-  project = "pharma"
-  env     = "dev"
-  region  = "us-east-1"
 }
 
 locals {
