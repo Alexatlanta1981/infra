@@ -78,25 +78,48 @@ jobs:
         run: terraform validate -no-color
 
       - name: Terraform Plan
-        id: plan
-        run: |
-          terraform plan \
-            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
-            -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
-            -var="github_org=${{ vars.GH_ORG }}" \
-            -out=tfplan \
-            -no-color
-        continue-on-error: true
+-        id: plan
+-        run: |
+-          terraform plan \
+-            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
+-            -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
+-            -var="github_org=${{ vars.GH_ORG }}" \
+-            -out=tfplan \
+-            -no-color
+-        continue-on-error: true
+-
+-      - name: Check plan status
+-        if: steps.plan.outcome == 'failure'
+-        run: exit 1
+-
+-      - name: Release state lock on failure
+-        if: failure() || cancelled()
+-        run: |
+-          aws s3 rm s3://${{ vars.TF_STATE_BUCKET }}/envs/dev/terraform.tfstate.tflock || true
+-
+-      - name: Upload plan file
+-        if: steps.plan.outcome == 'success'
+-        uses: actions/upload-artifact@v6
+-        with:
+-          name: tfplan
+-          path: envs/dev/tfplan
+-          retention-days: 1
 
-      - name: Check plan status
-        if: steps.plan.outcome == 'failure'
-        run: exit 1
++      - name: Terraform Apply
++        run: |
++          terraform apply \
++            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
++            -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
++            -var="github_org=${{ vars.GH_ORG }}" \
++            -auto-approve \
++            -no-color
++
++      - name: Release state lock on failure
++        if: failure() || cancelled()
++        run: |
++          aws s3 rm s3://${{ vars.TF_STATE_BUCKET }}/envs/dev/terraform.tfstate.tflock || true
 
-      - name: Release state lock on failure
-        if: failure() || cancelled()
-        run: |
-          aws s3 rm s3://${{ vars.TF_STATE_BUCKET }}/envs/dev/terraform.tfstate.tflock || true
-
+      
       - name: Upload plan file
         if: steps.plan.outcome == 'success'
         uses: actions/upload-artifact@v6
