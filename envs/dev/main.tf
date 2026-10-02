@@ -1,4 +1,10 @@
-# chris Dev Environments — managed via GitHub Actions CI/CD
+ chris Dev Environments — managed via GitHub Actions CI/CD
+
+locals {
+  project = "pharma"
+  env     = "dev"
+  region  = "us-east-1"
+}
 
 data "aws_caller_identity" "current" {}
 
@@ -79,3 +85,10 @@ module "secrets_manager" {
   db_host     = module.rds.db_instance_address
   jwt_secret  = var.jwt_secret
 }
+
+
+
+
+
+
+
