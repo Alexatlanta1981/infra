@@ -1,5 +1,4 @@
 # chris Dev Environments — managed via GitHub Actions CI/CD
-}
 
 data "aws_caller_identity" "current" {}
 
