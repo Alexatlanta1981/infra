@@ -1,3 +1,5 @@
+# ZenPharma Dev Environment — managed via GitHub Actions CI/CD
+
 locals {
   project = "pharma"
   env     = "dev"
@@ -83,3 +85,11 @@ module "secrets_manager" {
   db_host     = module.rds.db_instance_address
   jwt_secret  = var.jwt_secret
 }
+
+
+
+
+
+
+
+
