@@ -106,7 +106,7 @@ if subprocess.run(["which", "kubectl"], capture_output=True).returncode != 0:
 # ---------------------------------------------------------------------------
 print()
 print("============================================")
-print("  Zen Pharma -- External Secrets Setup")
+print("  MackLLC -- External Secrets Setup")
 print("============================================")
 print()
 print("  This script wires up External Secrets Operator to AWS Secrets Manager")

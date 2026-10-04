@@ -67,7 +67,7 @@ if subprocess.run(["which", "kubectl"], capture_output=True).returncode != 0:
 # ---------------------------------------------------------------------------
 print()
 print("============================================")
-print("  Zen Pharma -- Deployment Verification")
+print("  MackLLC -- Deployment Verification")
 print("============================================")
 print()
 print("  This script checks that all services are healthy in a given environment.")

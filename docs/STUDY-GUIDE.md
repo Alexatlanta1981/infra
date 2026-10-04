@@ -1,4 +1,4 @@
-# 📘 Personal Study Guide — Zen Pharma Platform (plain English)
+# 📘 Personal Study Guide — MackLLC Platform (plain English)
 
 Use this to explain the project and your troubleshooting in an interview.
 

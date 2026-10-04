@@ -12,7 +12,32 @@ module "eks" {
   endpoint_public_access  = true
 
   enable_irsa                              = true
-  enable_cluster_creator_admin_permissions = true
+  enable_cluster_creator_admin_permissions = var.enable_cluster_creator_admin
+
+  access_entries = merge(
+    var.sso_admin_role_arn == "" ? {} : {
+      sso_admin = {
+        principal_arn = var.sso_admin_role_arn
+        policy_associations = {
+          admin = {
+            policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+            access_scope = { type = "cluster" }
+          }
+        }
+      }
+    },
+    var.sso_readonly_role_arn == "" ? {} : {
+      sso_readonly = {
+        principal_arn = var.sso_readonly_role_arn
+        policy_associations = {
+          view = {
+            policy_arn   = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
+            access_scope = { type = "cluster" }
+          }
+        }
+      }
+    },
+  )
 
   addons = {
     vpc-cni = {

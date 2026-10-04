@@ -123,7 +123,7 @@ log("kubectl found.")
 # ---------------------------------------------------------------------------
 print()
 print("============================================")
-print("  Zen Pharma -- Deploy Services")
+print("  MackLLC -- Deploy Services")
 print("============================================")
 print()
 print("  This script applies ArgoCD Application manifests so ArgoCD starts")

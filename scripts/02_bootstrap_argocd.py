@@ -127,35 +127,31 @@ if subprocess.run(["which", "kubectl"], capture_output=True).returncode != 0:
 # ---------------------------------------------------------------------------
 print()
 print("============================================")
-print("  Zen Pharma -- ArgoCD Bootstrap")
+print("  MackLLC -- ArgoCD Bootstrap")
 print("============================================")
 print()
 print("  This script registers your gitops repo in ArgoCD,")
 print("  creates the pharma AppProject, and deploys Applications.")
 print()
-print("  You will be asked for 4 values:")
+print("  You will be asked for several values:")
 print("    1. Target environment  - which K8s namespace to deploy to")
 print("    2. GitOps repo URL     - HTTPS URL of your gitops fork")
 print("    3. GitHub username     - your GitHub account name")
-print("    4. GitHub token        - PAT with read access to gitops (input hidden)")
+print("    4. GitHub App creds    - app ID, installation ID, private key path")
 print()
 
 ENV             = prompt_choice("ENV", "Target environment (choose the namespace to deploy applications to)",
                                 ["dev", "qa", "prod"])
 GITOPS_REPO_URL = prompt("GITOPS_REPO_URL", "GitOps repository HTTPS URL",
-                          "https://github.com/Mohanraj133/zenpharma.git",
-                          "https://github.com/Mohanraj133/zenpharma.git")
+                          "https://github.com/Mohanraj133/mackllc.git",
+                          "https://github.com/Mohanraj133/mackllc.git")
                         
 
-print(f"\n{CYAN}  NOTE: Enter your personal GitHub username, not the organization name.")
-print(f"        GitHub authenticates users, not organizations. Your PAT grants")
-print(f"        access to the org's repos because you are a member.{NC}\n")
-
-GITHUB_USERNAME = prompt("GITHUB_USERNAME", "Your personal GitHub username",
-                          "<your-github-username>", "mohanraj133")
-GITOPS_TOKEN    = prompt_secret("GITOPS_TOKEN",
-                                "GitHub Personal Access Token with read access to gitops",
-                                "g__xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+GITHUB_APP_ID = prompt("GITHUB_APP_ID", "GitHub App ID (read-only Contents on gitops)", "123456", "")
+GITHUB_APP_INSTALLATION_ID = prompt("GITHUB_APP_INSTALLATION_ID", "GitHub App installation ID", "12345678", "")
+GITHUB_APP_KEY_PATH = prompt("GITHUB_APP_KEY_PATH", "Path to the GitHub App private key (.pem)", "~/app.pem", "")
+with open(os.path.expanduser(GITHUB_APP_KEY_PATH)) as _f:
+    GITHUB_APP_KEY = _f.read()
 
 default_gitops = os.path.join(DEFAULT_PROJECT_ROOT, "gitops")
 GITOPS_PATH     = prompt("GITOPS_PATH", "Local path to your gitops repo",
@@ -165,8 +161,7 @@ print()
 print("  ----- Configuration Summary -----")
 print(f"  Environment   : {ENV}")
 print(f"  GitOps repo   : {GITOPS_REPO_URL}")
-print(f"  GitHub user   : {GITHUB_USERNAME}")
-print("  GitHub token  : ******")
+print(f"  GitHub App ID : {GITHUB_APP_ID}")
 print("  ---------------------------------")
 print()
 confirm = input("  Continue? [Y/n]: ").strip() or "Y"
@@ -238,7 +233,7 @@ print("--------------------------------------------")
 project_file = os.path.join(GITOPS_PATH, "argocd/projects/pharma-project.yaml")
 if os.path.isfile(project_file):
     with open(project_file) as f:
-        content = f.read().replace("your-github-username", GITHUB_USERNAME)
+        content = f.read().replace("your-github-username", GITOPS_REPO_URL.split("/")[3])
     kubectl_apply_yaml(content)
     log(f"AppProject applied from {project_file}")
 else:
@@ -252,7 +247,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  description: Zen Pharma Platform
+  description: MackLLC Platform
   sourceRepos:
     - "{GITOPS_REPO_URL}"
   destinations:

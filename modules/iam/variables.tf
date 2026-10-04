@@ -27,3 +27,9 @@ variable "github_org" {
   description = "GitHub organization or username that owns frontend and backend"
   type        = string
 }
+
+variable "infra_repo" {
+  description = "Name of the infra repository that runs Terraform in GitHub Actions"
+  type        = string
+  default     = "infra"
+}

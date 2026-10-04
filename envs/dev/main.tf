@@ -1,4 +1,4 @@
-# ZenPharma Dev Environment — managed via GitHub Actions CI/CD
+# MackLLC Dev Environment — managed via GitHub Actions CI/CD
 
 locals {
   project = "pharma"
@@ -32,6 +32,10 @@ module "eks" {
   min_size           = 1
   max_size           = 4
   desired_size       = 3
+
+  sso_admin_role_arn           = var.sso_admin_role_arn
+  sso_readonly_role_arn        = var.sso_readonly_role_arn
+  enable_cluster_creator_admin = var.enable_cluster_creator_admin
 }
 
 module "rds" {
@@ -73,6 +77,7 @@ module "iam" {
   oidc_provider_url = module.eks.cluster_oidc_issuer_url
   aws_account_id    = data.aws_caller_identity.current.account_id
   github_org        = var.github_org
+  infra_repo        = var.infra_repo
 }
 
 module "secrets_manager" {

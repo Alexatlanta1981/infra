@@ -47,3 +47,21 @@ variable "max_size" {
   type        = number
   default     = 3
 }
+
+variable "enable_cluster_creator_admin" {
+  description = "Give the identity that created the cluster permanent admin. Turn off once SSO access is working."
+  type        = bool
+  default     = true
+}
+
+variable "sso_admin_role_arn" {
+  description = "IAM Identity Center (SSO) admin role ARN, WITHOUT the aws-reserved/sso.amazonaws.com path. Empty to skip."
+  type        = string
+  default     = ""
+}
+
+variable "sso_readonly_role_arn" {
+  description = "IAM Identity Center (SSO) read-only role ARN, WITHOUT the aws-reserved/sso.amazonaws.com path. Empty to skip."
+  type        = string
+  default     = ""
+}
