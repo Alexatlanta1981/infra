@@ -147,23 +147,58 @@ CI updates the tag in `gitops`; Argo CD syncs it. Roll back by reverting the tag
 
 ## 11. Tear down (reverse order, Terraform last)
 
-Do the steps in order. Destroying the cluster first leaves orphaned ALBs and security groups that block the VPC delete.
+Run each step, then its **Verify** command, before moving on. Destroying the cluster first leaves orphaned ALBs and security groups that block the VPC delete.
 
+**1. Delete the Argo apps**
 ```bash
-# 1. Stop Argo from recreating things, then delete the apps
 kubectl -n argocd delete applications --all
-# 2. Delete Ingresses so the ALB controller removes the load balancer
+```
+Verify: `kubectl -n argocd get applications` prints `No resources found`.
+
+**2. Delete Ingresses (the ALB controller removes the ALB)**
+```bash
 kubectl delete ingress --all -A
-# 3. Wait until no ALBs remain (empty output = ready)
+```
+Verify: `kubectl get ingress -A` prints `No resources found`.
+
+**3. Wait for the ALB to disappear (can take 1-3 minutes)**
+```bash
 aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerName' --output text
-# 4. Remove cluster add-ons
+```
+Verify: empty output. If a name is still listed, wait and rerun. Do not continue until it is empty.
+
+**4. Remove cluster add-ons**
+```bash
 helm uninstall argocd -n argocd
 helm uninstall external-secrets -n external-secrets
 helm uninstall aws-load-balancer-controller -n kube-system
-# 5. Destroy AWS (VPC, EKS, RDS, ECR, IAM) via CI
-gh workflow run terraform.yml -R <ORG>/infra -f action=destroy -f confirm_destroy=destroy
 ```
-Approve in the `dev` environment. Then confirm nothing is left: no EKS cluster, RDS instance, ECR repos, load balancers or unattached volumes. RDS may keep a final snapshot; delete it if you don't want it.
+Verify: `helm list -A` shows none of the three.
+
+**5. Destroy AWS (VPC, EKS, RDS, ECR, IAM) via CI**
+```bash
+gh workflow run terraform.yml -R <ORG>/infra -f action=destroy -f confirm_destroy=destroy
+gh run list -R <ORG>/infra --workflow terraform.yml --limit 1
+```
+Approve the run in the `dev` environment (GitHub > Actions > the run > Review deployments). Verify: the run shows `completed success`.
+
+**6. Confirm nothing is left in AWS**
+```bash
+aws eks list-clusters --query clusters
+aws rds describe-db-instances --query 'DBInstances[].DBInstanceIdentifier'
+aws ecr describe-repositories --query 'repositories[].repositoryName'
+aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerName'
+aws ec2 describe-volumes --filters Name=status,Values=available --query 'Volumes[].VolumeId'
+aws rds describe-db-snapshots --snapshot-type manual --query 'DBSnapshots[].DBSnapshotIdentifier'
+```
+Verify: every command returns `[]` (or empty). Delete any leftover RDS snapshot if you do not want to keep it.
+
+**7. Clean up local and GitHub leftovers (optional)**
+```bash
+rm -rf /tmp/mf
+gh secret list -R <ORG>/backend; gh secret list -R <ORG>/frontend
+```
+Delete the GitHub App (Settings > Developer settings > GitHub Apps) if the platform is retired.
 
 ## Troubleshooting
 
