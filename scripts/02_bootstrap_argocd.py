@@ -13,7 +13,6 @@
 
 import getpass
 import os
-import re
 import subprocess
 import sys
 from datetime import datetime
@@ -197,8 +196,9 @@ dry_run_result = subprocess.run(
         "--namespace", ARGOCD_NAMESPACE,
         "--from-literal=type=git",
         f"--from-literal=url={GITOPS_REPO_URL}",
-        f"--from-literal=username={GITHUB_USERNAME}",
-        f"--from-literal=password={GITOPS_TOKEN}",
+        f"--from-literal=githubAppID={GITHUB_APP_ID}",
+        f"--from-literal=githubAppInstallationID={GITHUB_APP_INSTALLATION_ID}",
+        f"--from-literal=githubAppPrivateKey={GITHUB_APP_KEY}",
         "--dry-run=client", "-o", "yaml",
     ],
     capture_output=True, text=True,

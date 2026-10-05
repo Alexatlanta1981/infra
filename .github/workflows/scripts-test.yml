@@ -1,0 +1,76 @@
+name: Bootstrap scripts
+
+on:
+  pull_request:
+    paths: ["scripts/**", ".github/workflows/scripts-test.yml"]
+  push:
+    branches: [main]
+    paths: ["scripts/**", ".github/workflows/scripts-test.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile and lint (syntax, undefined names, unused)
+        run: |
+          pip install ruff
+          python -m py_compile scripts/*.py
+          ruff check --select E9,F63,F7,F82,F401,F811,F841 scripts/
+
+  smoke:
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: smoke
+      - name: Run scripts 01-03 against kind
+        env:
+          AWS_REGION: us-east-1
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: dummy
+          AWS_SECRET_ACCESS_KEY: dummy
+          SKIP_ALB_CONTROLLER: "1"
+          CLUSTER_NAME: smoke
+          VPC_ID: vpc-00000000
+          ALB_CONTROLLER_ROLE: arn:aws:iam::000000000000:role/test-alb
+          GITOPS_PATH: ${{ runner.temp }}/gitops
+          ENV: dev
+          GITOPS_REPO_URL: https://github.com/example/gitops.git
+          GITHUB_APP_ID: "1"
+          GITHUB_APP_INSTALLATION_ID: "2"
+          GITHUB_APP_KEY_PATH: ${{ runner.temp }}/app.pem
+          AWS_ACCOUNT_ID: "000000000000"
+          ESO_ROLE_NAME: test-eso
+        run: |
+          mkdir -p "$GITOPS_PATH"
+          openssl genrsa -out "$GITHUB_APP_KEY_PATH" 2048
+          echo Y | python3 scripts/01_install_prerequisites.py
+          echo Y | python3 scripts/02_bootstrap_argocd.py
+          echo Y | python3 scripts/03_setup_external_secrets.py
+      - name: Assert expected resources
+        run: |
+          set -e
+          kubectl -n argocd rollout status deploy/argocd-server --timeout=120s
+          kubectl -n external-secrets rollout status deploy/external-secrets --timeout=120s
+          kubectl get ns dev
+          kubectl -n argocd get secret gitops-repo \
+            -l argocd.argoproj.io/secret-type=repository
+          kubectl -n argocd get appproject mackllc
+          kubectl get clustersecretstore
+          kubectl -n dev get externalsecret
+      - name: Dump state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl get events -A --sort-by=.lastTimestamp | tail -40
