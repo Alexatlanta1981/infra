@@ -145,12 +145,25 @@ gh workflow run ci-<service>.yml -R <ORG>/backend --ref main
 
 CI updates the tag in `gitops`; Argo CD syncs it. Roll back by reverting the tag commit in `gitops`.
 
-## 11. Tear down
+## 11. Tear down (reverse order, Terraform last)
+
+Do the steps in order. Destroying the cluster first leaves orphaned ALBs and security groups that block the VPC delete.
 
 ```bash
+# 1. Stop Argo from recreating things, then delete the apps
+kubectl -n argocd delete applications --all
+# 2. Delete Ingresses so the ALB controller removes the load balancer
+kubectl delete ingress --all -A
+# 3. Wait until no ALBs remain (empty output = ready)
+aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerName' --output text
+# 4. Remove cluster add-ons
+helm uninstall argocd -n argocd
+helm uninstall external-secrets -n external-secrets
+helm uninstall aws-load-balancer-controller -n kube-system
+# 5. Destroy AWS (VPC, EKS, RDS, ECR, IAM) via CI
 gh workflow run terraform.yml -R <ORG>/infra -f action=destroy -f confirm_destroy=destroy
 ```
-Approve in the `dev` environment.
+Approve in the `dev` environment. Then confirm nothing is left: no EKS cluster, RDS instance, ECR repos, load balancers or unattached volumes. RDS may keep a final snapshot; delete it if you don't want it.
 
 ## Troubleshooting
 
