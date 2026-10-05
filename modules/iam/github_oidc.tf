@@ -124,7 +124,8 @@ data "aws_iam_policy_document" "terraform_apply_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["${local.sub_prefix[var.infra_repo]}:ref:refs/heads/main"]
+      # Apply job runs in the approval-gated "dev" environment, which changes the sub claim.
+      values = ["${local.sub_prefix[var.infra_repo]}:environment:dev"]
     }
   }
 }
