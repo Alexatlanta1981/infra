@@ -55,13 +55,13 @@ variable "enable_cluster_creator_admin" {
 }
 
 variable "sso_admin_role_arn" {
-  description = "IAM Identity Center (SSO) admin role ARN, WITHOUT the aws-reserved/sso.amazonaws.com path. Empty to skip."
+  description = "IAM Identity Center (SSO) admin role ARN, Full ARN including the aws-reserved/sso.amazonaws.com path (EKS access entries require it). Empty to skip."
   type        = string
   default     = ""
 }
 
 variable "sso_readonly_role_arn" {
-  description = "IAM Identity Center (SSO) read-only role ARN, WITHOUT the aws-reserved/sso.amazonaws.com path. Empty to skip."
+  description = "IAM Identity Center (SSO) read-only role ARN, Full ARN including the aws-reserved/sso.amazonaws.com path (EKS access entries require it). Empty to skip."
   type        = string
   default     = ""
 }

@@ -17,13 +17,13 @@ variable "infra_repo" {
 }
 
 variable "sso_admin_role_arn" {
-  description = "IAM Identity Center admin role ARN (no aws-reserved path). Empty to skip."
+  description = "IAM Identity Center admin role ARN (full ARN incl. aws-reserved path). Empty to skip."
   type        = string
-  default     = "arn:aws:iam::058170692253:role/AWSReservedSSO_ConsoleAdministratorAccess_7cbcf4d5e2367bb5"
+  default     = "arn:aws:iam::058170692253:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_ConsoleAdministratorAccess_7cbcf4d5e2367bb5"
 }
 
 variable "sso_readonly_role_arn" {
-  description = "IAM Identity Center read-only role ARN (no aws-reserved path). Empty to skip."
+  description = "IAM Identity Center read-only role ARN (full ARN incl. aws-reserved path). Empty to skip."
   type        = string
   default     = ""
 }
