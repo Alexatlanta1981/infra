@@ -234,8 +234,8 @@ print("  Waiting for ArgoCD to sync...")
 print("  (Ctrl+C to stop watching — ArgoCD continues syncing in background)")
 print("============================================")
 
-POLL_INTERVAL = 15
-MAX_WAIT      = 60 * 10  # 10 minutes
+POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "15"))
+MAX_WAIT      = int(os.environ.get("MAX_WAIT", str(60 * 10)))  # 10 minutes
 elapsed       = 0
 pending       = list(applied)
 results       = {}

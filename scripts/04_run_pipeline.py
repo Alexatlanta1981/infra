@@ -183,7 +183,7 @@ for name, repo, workflow in selected:
         continue
 
     # Give GitHub a moment to register the new run
-    time.sleep(4)
+    time.sleep(int(os.environ.get("TRIGGER_DELAY", "4")))
 
     run_id_out, _ = run_cmd(
         ["gh", "run", "list",
@@ -213,8 +213,8 @@ print("  Waiting for pipeline(s) to complete...")
 print("  (Ctrl+C to stop watching — pipelines continue running in GitHub)")
 print("============================================")
 
-POLL_INTERVAL = 30
-MAX_WAIT      = 60 * 30  # 30 minutes
+POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "30"))
+MAX_WAIT      = int(os.environ.get("MAX_WAIT", str(60 * 30)))  # 30 minutes
 
 pending = list(triggered_runs)
 results = {}
