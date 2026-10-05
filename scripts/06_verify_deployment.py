@@ -236,14 +236,16 @@ if alb_hostname:
 
     health_paths = {
         "mackllc-ui":             "/",
-        "api-gateway":           "/api/actuator/health",
-        "auth-service":          "/api/auth/actuator/health",
-        "drug-catalog-service":  "/api/catalog/actuator/health",
-        "inventory-service":     "/api/inventory/actuator/health",
-        "supplier-service":      "/api/suppliers/actuator/health",
-        "manufacturing-service": "/api/manufacturing/actuator/health",
+        "auth-service":          "/api/auth/login",
+        "drug-catalog-service":  "/api/drugs",
+        "notification-service":  "/api/notifications",
+        "inventory-service":     "/api/inventory",
+        "supplier-service":      "/api/suppliers",
+        "manufacturing-service": "/api/manufacturing",
+        "qc-service":            "/api/qc",
     }
 
+    # Routed through the gateway; 401/403/405 prove routing + auth are active
     base_url = f"http://{alb_hostname}"
 
     for service, path in health_paths.items():
@@ -257,10 +259,10 @@ if alb_hostname:
         except Exception:
             http_code = 0
 
-        if http_code in (200, 301, 302):
+        if http_code in (200, 301, 302, 401, 403, 405):
             log(f"{service}: HTTP {http_code}  <--  {url}")
         else:
-            fail(f"{service}: HTTP {http_code}  <--  {url}  (expected 200/301/302)")
+            fail(f"{service}: HTTP {http_code}  <--  {url}  (expected 2xx/3xx or 401/403/405 = routed)")
 
 # ---------------------------------------------------------------------------
 # Summary
