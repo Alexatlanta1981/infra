@@ -65,8 +65,8 @@ jobs:
           kubectl -n argocd rollout status deploy/argocd-server --timeout=120s
           kubectl -n external-secrets rollout status deploy/external-secrets --timeout=120s
           kubectl get ns dev
-          kubectl -n argocd get secret gitops-repo \
-            -l argocd.argoproj.io/secret-type=repository
+          kubectl -n argocd get secret gitops-repo
+          test "$(kubectl -n argocd get secret gitops-repo -o jsonpath='{.metadata.labels.argocd\.argoproj\.io/secret-type}')" = repository
           kubectl -n argocd get appproject mackllc
           kubectl get clustersecretstore
           kubectl -n dev get externalsecret
