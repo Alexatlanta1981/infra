@@ -1,0 +1,6 @@
+# Accepted risks (dev). Revisit before production.
+# EKS API reachable publicly: needed for GitHub-hosted runners / SSO users without VPN. Auth is IAM/SSO only.
+AWS-0040
+AWS-0041
+# Unrestricted egress for nodes/cluster SG: needed for ECR, STS, GitHub, package pulls via NAT.
+AWS-0104
