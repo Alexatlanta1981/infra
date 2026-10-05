@@ -31,3 +31,8 @@ output "microservice_role_arns" {
   description = "Put each ARN in that service's serviceAccount annotation in gitops"
   value       = module.iam.microservice_role_arns
 }
+
+output "rds_master_secret_arn" {
+  description = "RDS-managed, auto-rotated master credentials secret"
+  value       = module.rds.master_user_secret_arn
+}

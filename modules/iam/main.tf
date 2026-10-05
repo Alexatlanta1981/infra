@@ -141,9 +141,12 @@ module "eso" {
   policy_json = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = local.secrets_read
-      Resource = "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/pharma/*"
+      Effect = "Allow"
+      Action = local.secrets_read
+      Resource = [
+        "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/pharma/*",
+        "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:rds!db-*"
+      ]
     }]
   })
   boundary_allowed_actions = local.secrets_read

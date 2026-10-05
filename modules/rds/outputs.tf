@@ -17,3 +17,8 @@ output "db_instance_name" {
   description = "Name of the database"
   value       = module.rds.db_instance_name
 }
+
+output "master_user_secret_arn" {
+  description = "ARN of the RDS-managed master credentials secret (auto-rotated)"
+  value       = module.rds.db_instance_master_user_secret_arn
+}

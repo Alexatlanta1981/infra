@@ -44,7 +44,6 @@ module "rds" {
   project                    = local.project
   env                        = local.env
   username                   = "pharmaadmin"
-  password                   = var.db_password
   vpc_id                     = module.vpc.vpc_id
   db_subnet_group_name       = module.vpc.database_subnet_group_name
   eks_node_security_group_id = module.eks.node_security_group_id
@@ -86,7 +85,6 @@ module "secrets_manager" {
   project     = local.project
   env         = local.env
   db_username = "pharmaadmin"
-  db_password = var.db_password
   db_host     = module.rds.db_instance_address
   jwt_secret  = var.jwt_secret
 }

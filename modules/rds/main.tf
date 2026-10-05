@@ -40,11 +40,11 @@ module "rds" {
   allocated_storage = var.allocated_storage
   storage_type      = "gp3"
 
-  db_name                     = var.db_name
-  username                    = var.username
-  manage_master_user_password = false
-  password_wo                 = var.password
-  password_wo_version         = var.password_version
+  db_name                                                = var.db_name
+  username                                               = var.username
+  manage_master_user_password                            = true
+  manage_master_user_password_rotation                   = true
+  master_user_password_rotation_automatically_after_days = 7
 
   multi_az               = var.multi_az
   db_subnet_group_name   = var.db_subnet_group_name

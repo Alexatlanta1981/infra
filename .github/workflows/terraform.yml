@@ -101,7 +101,6 @@ jobs:
       - name: Terraform Plan
         run: |
           terraform plan \
-            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
             -var="github_org=${{ vars.GH_ORG }}" \
             -no-color
@@ -140,7 +139,6 @@ jobs:
       - name: Terraform Apply
         run: |
           terraform apply \
-            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
             -var="github_org=${{ vars.GH_ORG }}" \
             -auto-approve \
@@ -185,7 +183,6 @@ jobs:
       - name: Terraform Destroy
         run: |
           terraform destroy \
-            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
             -var="github_org=${{ vars.GH_ORG }}" \
             -auto-approve \

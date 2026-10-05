@@ -241,6 +241,8 @@ print("--------------------------------------------")
 print(f"  Step 3 of 4: ExternalSecrets -> namespace '{ENV}'")
 print("--------------------------------------------")
 
+RDS_SECRET_ARN = run_cmd(
+    ["terraform", "-chdir=envs/dev", "output", "-raw", "rds_master_secret_arn"], capture=True)[0]
 db_external_secret = f"""\
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
@@ -248,7 +250,7 @@ metadata:
   name: db-credentials
   namespace: {ENV}
 spec:
-  refreshInterval: 1h
+  refreshInterval: 15m
   secretStoreRef:
     name: aws-secrets-manager
     kind: ClusterSecretStore
@@ -258,23 +260,23 @@ spec:
   data:
     - secretKey: DB_USERNAME
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: {RDS_SECRET_ARN}
         property: username
     - secretKey: DB_PASSWORD
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: {RDS_SECRET_ARN}
         property: password
     - secretKey: SPRING_DATASOURCE_USERNAME
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: {RDS_SECRET_ARN}
         property: username
     - secretKey: SPRING_DATASOURCE_PASSWORD
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: {RDS_SECRET_ARN}
         property: password
     - secretKey: DB_HOST
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: /pharma/{ENV}/db-config
         property: host
 """
 kubectl_apply_yaml(db_external_secret)

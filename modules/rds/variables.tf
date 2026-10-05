@@ -34,18 +34,6 @@ variable "username" {
   type        = string
 }
 
-variable "password" {
-  description = "Master password for the database"
-  type        = string
-  sensitive   = true
-}
-
-variable "password_version" {
-  description = "Increment to trigger a password update"
-  type        = number
-  default     = 1
-}
-
 variable "instance_class" {
   description = "RDS instance class"
   type        = string
