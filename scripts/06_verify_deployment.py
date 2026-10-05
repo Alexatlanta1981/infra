@@ -181,9 +181,9 @@ es_out, _ = run_cmd(
 )
 for line in es_out.splitlines():
     parts = line.split()
-    if len(parts) >= 5:
+    if len(parts) >= 6:
         es_name  = parts[0]
-        es_ready = parts[4]
+        es_ready = parts[5]
         if es_ready != "True":
             fail(f"ExternalSecret '{es_name}' is not Ready (Ready={es_ready})")
 
