@@ -16,12 +16,16 @@ export AWS_PROFILE=mack-admin AWS_REGION=us-east-1
 aws sts get-caller-identity        # must show <ACCOUNT_ID>
 ```
 
+**Verify:** `git --version && gh --version && aws --version && terraform version && kubectl version --client && helm version --short && yq --version && python3 --version` all print versions. `gh auth status` says logged in.
+
 ## 1. Clone the four repos
 
 ```bash
 mkdir -p ~/devops/chris && cd ~/devops/chris
 for r in infra backend frontend gitops; do git clone https://github.com/<ORG>/$r.git; done
 ```
+
+**Verify:** `ls ~/devops/chris` lists `infra backend frontend gitops`.
 
 ## 2. One-time AWS prerequisites
 
@@ -32,6 +36,8 @@ for r in infra backend frontend gitops; do git clone https://github.com/<ORG>/$r
    ```
 2. Create the GitHub OIDC provider and the two Terraform CI roles (plan = read-only, apply = write) in AWS IAM. Trust them to `repo:<ORG>/infra`.
 3. Edit `envs/dev/backend.tf` (bucket) and `envs/dev/variables.tf` defaults (`github_org`, `sso_admin_role_arn`).
+
+**Verify:** `aws s3api get-bucket-versioning --bucket <STATE_BUCKET>` shows `Enabled`; `aws iam list-open-id-connect-providers` lists `token.actions.githubusercontent.com`; `aws iam list-roles --query 'Roles[].RoleName'` shows both CI roles.
 
 ## 3. GitHub settings for `infra`
 
@@ -48,6 +54,8 @@ Settings → Secrets and variables → Actions:
 Create the `dev` **environment** (Settings → Environments) with yourself as required reviewer. Apply pauses there for approval.
 
 Generate a JWT secret: `openssl rand -base64 48`
+
+**Verify:** `gh variable list -R <ORG>/infra` shows the four variables; `gh secret list -R <ORG>/infra` shows `DEV_JWT_SECRET`.
 
 ## 4. Create the AWS infrastructure (Terraform, via Git)
 
@@ -67,12 +75,16 @@ gh pr create --fill
 - Run apply: `gh workflow run terraform.yml -R <ORG>/infra -f action=apply`, then approve it in the `dev` environment (Actions tab → the run → Review deployments).
 - This creates VPC, EKS, RDS, ECR, IAM/IRSA roles, secrets. Takes ~20 min.
 
+**Verify:** `gh run list -R <ORG>/infra --workflow terraform.yml --limit 1` shows `completed success`; `aws eks list-clusters` shows `mackllc-dev-cluster`.
+
 ## 5. Connect kubectl
 
 ```bash
 aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1
 kubectl get nodes
 ```
+
+**Verify:** nodes show `Ready`.
 
 ## 6. GitHub App for CI → gitops (no personal tokens)
 
@@ -85,6 +97,8 @@ Needed so CI can write image tags to the `gitops` repo and Argo CD can read it.
 
 > Status: workflows mint a short-lived GitHub App token (`GITOPS_APP_ID` variable + `GITOPS_APP_PRIVATE_KEY` secret). The old `GITOPS_TOKEN` is being retired.
 
+**Verify:** `gh variable list -R <ORG>/backend --env dev` shows `GITOPS_APP_ID`; `gh secret list -R <ORG>/backend --env dev` shows `GITOPS_APP_PRIVATE_KEY`. Repeat for `frontend`.
+
 ## 7. Install cluster components (scripts, in order)
 
 ```bash
@@ -96,6 +110,8 @@ python3 03_setup_external_secrets.py    # DB + JWT secrets from AWS Secrets Mana
 ```
 
 Each script prompts for values; press Enter to accept defaults. You can pre-set any prompt as an env var (e.g. `export ENV=dev`).
+
+**Verify:** `kubectl get pods -n argocd` and `-n external-secrets` and `-n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller` are all `Running`; `kubectl get clustersecretstore` shows `Valid`; `kubectl get externalsecret -A` shows `SecretSynced`.
 
 ## 8. Build the images
 
@@ -113,6 +129,8 @@ gh run list -R <ORG>/backend --limit 8
 
 Each build: test → scan → push to ECR → sign → write the new image tag into `gitops`.
 ECR tags are immutable: re-running the same commit fails to push. Make a new commit to rebuild.
+
+**Verify:** `gh run list -R <ORG>/backend --limit 8` all `success`; `aws ecr describe-images --repository-name <repo> --query 'imageDetails[].imageTags'` shows a `sha-xxxxxxx` tag; `git -C ~/devops/chris/gitops pull` shows new tag commits.
 
 ## 9. Deploy and verify
 
@@ -132,6 +150,8 @@ kubectl get ingress -n dev  # ADDRESS filled in
 
 Open the UI at the ingress ADDRESS (`http://<alb-hostname>/`).
 
+**Verify:** `curl -s -o /dev/null -w '%{http_code}\n' http://<alb-hostname>/` prints `200`; `curl -s -o /dev/null -w '%{http_code}\n' http://<alb-hostname>/api/` prints 200, 401, 403 or 404 (not 502/503).
+
 ## 10. Day-2: shipping a change
 
 ```bash
@@ -144,6 +164,8 @@ gh workflow run ci-<service>.yml -R <ORG>/backend --ref main
 ```
 
 CI updates the tag in `gitops`; Argo CD syncs it. Roll back by reverting the tag commit in `gitops`.
+
+**Verify:** the new `sha-` tag appears in `kubectl get deploy -n dev -o wide` and the pod is `Running`.
 
 ## 11. Tear down (reverse order, Terraform last)
 
