@@ -52,6 +52,7 @@ jobs:
           GITHUB_APP_KEY_PATH: ${{ runner.temp }}/app.pem
           AWS_ACCOUNT_ID: "000000000000"
           ESO_ROLE_NAME: test-eso
+          RDS_MASTER_SECRET_ARN: arn:aws:secretsmanager:us-east-1:000000000000:secret:rds!db-test
         run: |
           mkdir -p "$GITOPS_PATH"
           openssl genrsa -out "$GITHUB_APP_KEY_PATH" 2048

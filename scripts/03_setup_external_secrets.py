@@ -241,7 +241,7 @@ print("--------------------------------------------")
 print(f"  Step 3 of 4: ExternalSecrets -> namespace '{ENV}'")
 print("--------------------------------------------")
 
-RDS_SECRET_ARN = run_cmd(
+RDS_SECRET_ARN = os.environ.get("RDS_MASTER_SECRET_ARN") or run_cmd(
     ["terraform", "-chdir=envs/dev", "output", "-raw", "rds_master_secret_arn"], capture=True)[0]
 db_external_secret = f"""\
 apiVersion: external-secrets.io/v1
