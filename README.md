@@ -24,7 +24,7 @@
 | Immutable ECR tags, `sha-<7chars>` | Every image maps to one commit. A rebuild needs a new commit. |
 | Cosign-signed images, pinned Actions, Trivy and SAST in CI | Supply-chain integrity. Trivy is non-blocking for now so builds flow while findings are triaged. |
 | Bootstrap **scripts** with their own protected branch and `kind` tests | The cluster bring-up is repeatable and tested before it touches AWS (see below). |
-| CI writes to gitops with a **GitHub App**, not a PAT | Short-lived, scoped, auditable. A temporary `GITOPS_TOKEN` is still in use until the App swap merges. |
+| CI writes to gitops with a **GitHub App**, not a PAT | Short-lived, scoped, auditable. Workflows mint a token per run with `actions/create-github-app-token` (App `mackllc-ci-gitops-writer-3`, contents+PR write on `gitops` only). Swap is in review (backend #21, frontend #4); `GITOPS_TOKEN` is deleted once a build passes. |
 
 ### What it took (v1.1 → v1.2)
 
@@ -32,7 +32,7 @@ IRSA trust subject fixed, Trivy gate and reporting steps made non-fatal, gitops 
 
 ### Known gaps before go-live
 
-- Replace the temporary `GITOPS_TOKEN` with the GitHub App.
+- Delete the old `GITOPS_TOKEN` secrets after the first build with the App token passes.
 - Turn Trivy back to blocking (`exit-code 1`) after fixing findings.
 - Argo CD SSO and disabling the local admin user.
 - `jwt_secret` handling (local tfvars vs CI secret).
