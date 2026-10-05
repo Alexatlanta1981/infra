@@ -33,3 +33,8 @@ variable "infra_repo" {
   type        = string
   default     = "infra"
 }
+
+variable "github_repo_subject_prefixes" {
+  description = "Map of repo name to its OIDC sub-claim prefix (see /actions/oidc/customization/sub)"
+  type        = map(string)
+}
