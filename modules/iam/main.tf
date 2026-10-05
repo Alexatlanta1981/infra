@@ -2,7 +2,7 @@ locals {
   # Kubernetes service account name == component name; one IAM role per microservice
   microservices = toset([
     "api-gateway", "auth-service", "drug-catalog-service", "inventory-service",
-    "manufacturing-service", "notification-service", "pharma-ui", "qc-service",
+    "manufacturing-service", "notification-service", "mackllc-ui", "qc-service",
     "supplier-service",
   ])
   # Argo CD runs once per environment; Helm renders inside repo-server and
@@ -144,7 +144,7 @@ module "eso" {
       Effect = "Allow"
       Action = local.secrets_read
       Resource = [
-        "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/pharma/*",
+        "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/mackllc/*",
         "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:rds!db-*"
       ]
     }]
@@ -205,7 +205,7 @@ module "microservice" {
     Statement = [{
       Effect   = "Allow"
       Action   = local.secrets_read
-      Resource = "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/pharma/${var.env}/${each.key}/*"
+      Resource = "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/mackllc/${var.env}/${each.key}/*"
     }]
   })
   boundary_allowed_actions = local.secrets_read

@@ -1,10 +1,10 @@
 resource "aws_secretsmanager_secret" "db_credentials" {
-  name                    = "/pharma/${var.env}/db-config"
+  name                    = "/mackllc/${var.env}/db-config"
   description             = "Non-secret database connection settings; the password lives in the RDS-managed secret"
   recovery_window_in_days = 0
 
   tags = {
-    Name    = "/pharma/${var.env}/db-config"
+    Name    = "/mackllc/${var.env}/db-config"
     Env     = var.env
     Project = var.project
   }
@@ -19,12 +19,12 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
 }
 
 resource "aws_secretsmanager_secret" "jwt_secret" {
-  name                    = "/pharma/${var.env}/jwt-secret"
-  description             = "JWT signing secret for the pharma ${var.env} environment"
+  name                    = "/mackllc/${var.env}/jwt-secret"
+  description             = "JWT signing secret for the mackllc ${var.env} environment"
   recovery_window_in_days = 0
 
   tags = {
-    Name    = "/pharma/${var.env}/jwt-secret"
+    Name    = "/mackllc/${var.env}/jwt-secret"
     Env     = var.env
     Project = var.project
   }

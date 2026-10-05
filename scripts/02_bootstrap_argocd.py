@@ -4,7 +4,7 @@
 #
 # After ArgoCD is installed (script 01), this script:
 #   1. Registers your gitops repo in ArgoCD
-#   2. Creates the pharma AppProject
+#   2. Creates the mackllc AppProject
 #
 # Application deployment is handled by 05_deploy_services.py
 #
@@ -131,7 +131,7 @@ print("  MackLLC -- ArgoCD Bootstrap")
 print("============================================")
 print()
 print("  This script registers your gitops repo in ArgoCD,")
-print("  creates the pharma AppProject, and deploys Applications.")
+print("  creates the mackllc AppProject, and deploys Applications.")
 print()
 print("  You will be asked for several values:")
 print("    1. Target environment  - which K8s namespace to deploy to")
@@ -223,14 +223,14 @@ run_cmd([
 log(f"GitOps repo '{GITOPS_REPO_URL}' registered in ArgoCD.")
 
 # ---------------------------------------------------------------------------
-# Step 2 - Create the pharma AppProject
+# Step 2 - Create the mackllc AppProject
 # ---------------------------------------------------------------------------
 print()
 print("--------------------------------------------")
-print("  Step 2 of 3: Create pharma AppProject")
+print("  Step 2 of 3: Create mackllc AppProject")
 print("--------------------------------------------")
 
-project_file = os.path.join(GITOPS_PATH, "argocd/projects/pharma-project.yaml")
+project_file = os.path.join(GITOPS_PATH, "argocd/projects/mackllc-project.yaml")
 if os.path.isfile(project_file):
     with open(project_file) as f:
         content = f.read().replace("your-github-username", GITOPS_REPO_URL.split("/")[3])
@@ -242,7 +242,7 @@ else:
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: pharma
+  name: mackllc
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io

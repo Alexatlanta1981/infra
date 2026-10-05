@@ -1,7 +1,7 @@
 # Naming convention: <project>-<env>-<component>-<type>
-#   role     -> pharma-dev-auth-service-irsa
-#   policy   -> pharma-dev-auth-service-policy
-#   boundary -> pharma-dev-auth-service-boundary
+#   role     -> mackllc-dev-auth-service-irsa
+#   policy   -> mackllc-dev-auth-service-policy
+#   boundary -> mackllc-dev-auth-service-boundary
 locals {
   base    = "${var.project}-${var.env}-${var.component}"
   issuer  = replace(var.oidc_provider_url, "https://", "")

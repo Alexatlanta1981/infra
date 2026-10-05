@@ -1,7 +1,7 @@
 # MackLLC Dev Environment — managed via GitHub Actions CI/CD
 
 locals {
-  project = "pharma"
+  project = "mackllc"
   env     = "dev"
   region  = "us-east-1"
 }
@@ -43,7 +43,7 @@ module "rds" {
 
   project                    = local.project
   env                        = local.env
-  username                   = "pharmaadmin"
+  username                   = "mackllcadmin"
   vpc_id                     = module.vpc.vpc_id
   db_subnet_group_name       = module.vpc.database_subnet_group_name
   eks_node_security_group_id = module.eks.node_security_group_id
@@ -61,7 +61,7 @@ module "ecr" {
     "inventory-service",
     "manufacturing-service",
     "notification-service",
-    "pharma-ui",
+    "mackllc-ui",
     "supplier-service",
     "qc-service",
   ]
@@ -84,7 +84,7 @@ module "secrets_manager" {
 
   project     = local.project
   env         = local.env
-  db_username = "pharmaadmin"
+  db_username = "mackllcadmin"
   db_host     = module.rds.db_instance_address
   jwt_secret  = var.jwt_secret
 }

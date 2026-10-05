@@ -204,9 +204,9 @@ run_cmd(["kubectl", "get", "ingress", "-n", ENV], ok_fail=True)
 print()
 
 # ALB hostname is provisioned per-Ingress by the AWS Load Balancer Controller.
-# We read it from the pharma-ui ingress (the group's primary entry point).
+# We read it from the mackllc-ui ingress (the group's primary entry point).
 alb_hostname, _ = run_cmd(
-    ["kubectl", "get", "ingress", "pharma-ui", "-n", ENV,
+    ["kubectl", "get", "ingress", "mackllc-ui", "-n", ENV,
      "-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}"],
     capture=True, ok_fail=True,
 )
@@ -235,7 +235,7 @@ if alb_hostname:
     print()
 
     health_paths = {
-        "pharma-ui":             "/",
+        "mackllc-ui":             "/",
         "api-gateway":           "/api/actuator/health",
         "auth-service":          "/api/auth/actuator/health",
         "drug-catalog-service":  "/api/catalog/actuator/health",

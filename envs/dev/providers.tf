@@ -22,7 +22,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project   = "pharma"
+      Project   = "mackllc"
       Env       = "dev"
       ManagedBy = "terraform"
     }

@@ -93,7 +93,7 @@ def kubectl_apply_yaml(yaml_str):
 # Order matters: dependencies must be deployed before dependents.
 # ---------------------------------------------------------------------------
 FRONTEND_SERVICES = [
-    ("pharma-ui",             "pharma-ui-app.yaml"),
+    ("mackllc-ui",             "mackllc-ui-app.yaml"),
 ]
 
 BACKEND_SERVICES = [
@@ -158,7 +158,7 @@ print()
 print(f"{BOLD}  Select which services to deploy to '{ENV}':{NC}")
 print()
 print("    F) Frontend only")
-print("       1) pharma-ui")
+print("       1) mackllc-ui")
 print()
 print("    B) All backend services")
 print("       2) auth-service")
@@ -307,7 +307,7 @@ if skipped:
 
 print()
 alb_hostname, _ = run_cmd(
-    ["kubectl", "get", "ingress", "pharma-ui", "-n", ENV,
+    ["kubectl", "get", "ingress", "mackllc-ui", "-n", ENV,
      "-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}"],
     capture=True, ok_fail=True,
 )

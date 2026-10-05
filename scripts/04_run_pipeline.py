@@ -98,7 +98,7 @@ BRANCH         = prompt("BRANCH",           "Branch to build",
 
 # Update service catalogue with user-provided repo names
 FRONTEND = [
-    ("pharma-ui",             FRONTEND_REPO, "ci-pharma-ui.yml"),
+    ("mackllc-ui",             FRONTEND_REPO, "ci-mackllc-ui.yml"),
 ]
 
 BACKEND = [
@@ -121,7 +121,7 @@ print()
 print(f"{BOLD}  Select which services to build:{NC}")
 print()
 print("    F) Frontend only")
-print("       1) pharma-ui")
+print("       1) mackllc-ui")
 print()
 print("    B) Backend only (all 8 services)")
 print("       2) auth-service")
