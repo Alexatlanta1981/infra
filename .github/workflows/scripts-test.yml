@@ -26,6 +26,7 @@ jobs:
           ruff check --select E9,F63,F7,F82,F401,F811,F841 scripts/
 
   smoke:
+    name: bootstrap smoke (01-03, kind)
     needs: static
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -74,4 +75,97 @@ jobs:
         if: failure()
         run: |
           kubectl get pods -A
+          kubectl get events -A --sort-by=.lastTimestamp | tail -40
+
+  app-layer:
+    name: app layer (04-06, kind)
+    needs: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Alexatlanta1981/gitops
+          path: gitops
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: apptest
+      - name: Fake gh CLI (script 04 must not trigger real builds)
+        run: |
+          mkdir -p "$RUNNER_TEMP/fakebin"
+          cat > "$RUNNER_TEMP/fakebin/gh" <<'EOF'
+          #!/usr/bin/env bash
+          echo "gh $*" >> "$RUNNER_TEMP/gh-calls.log"
+          case "$1 $2" in
+            "auth status") exit 0 ;;
+            "workflow run") exit 0 ;;
+            "run list") echo 12345 ;;
+            "run view") echo "completed|success" ;;
+          esac
+          EOF
+          chmod +x "$RUNNER_TEMP/fakebin/gh"
+      - name: Bootstrap cluster (01-03)
+        env:
+          AWS_REGION: us-east-1
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: dummy
+          AWS_SECRET_ACCESS_KEY: dummy
+          SKIP_ALB_CONTROLLER: "1"
+          CLUSTER_NAME: apptest
+          VPC_ID: vpc-00000000
+          ALB_CONTROLLER_ROLE: arn:aws:iam::000000000000:role/test-alb
+          GITOPS_PATH: ${{ github.workspace }}/gitops
+          ENV: dev
+          GITOPS_REPO_URL: https://github.com/Alexatlanta1981/gitops.git
+          GITHUB_APP_ID: "1"
+          GITHUB_APP_INSTALLATION_ID: "2"
+          GITHUB_APP_KEY_PATH: ${{ runner.temp }}/app.pem
+          AWS_ACCOUNT_ID: "000000000000"
+          ESO_ROLE_NAME: test-eso
+          RDS_MASTER_SECRET_ARN: arn:aws:secretsmanager:us-east-1:000000000000:secret:rds!db-test
+        run: |
+          openssl genrsa -out "$GITHUB_APP_KEY_PATH" 2048
+          echo Y | python3 scripts/01_install_prerequisites.py
+          echo Y | python3 scripts/02_bootstrap_argocd.py
+          echo Y | python3 scripts/03_setup_external_secrets.py
+      - name: Script 04 (fake gh)
+        env:
+          PATH_PREFIX: ${{ runner.temp }}/fakebin
+          GITHUB_ORG: Alexatlanta1981
+          FRONTEND_REPO: frontend
+          BACKEND_REPO: backend
+          BRANCH: main
+          POLL_INTERVAL: "1"
+          MAX_WAIT: "30"
+          TRIGGER_DELAY: "0"
+        run: |
+          export PATH="$PATH_PREFIX:$PATH"
+          printf 'A\nY\n' | python3 scripts/04_run_pipeline.py
+          test "$(grep -c '^gh workflow run' "$RUNNER_TEMP/gh-calls.log")" = 9
+      - name: Script 05 (apply Argo CD Applications)
+        env:
+          ENV: dev
+          GITHUB_USERNAME: Alexatlanta1981
+          GITOPS_PATH: ${{ github.workspace }}/gitops
+          POLL_INTERVAL: "5"
+          MAX_WAIT: "20"
+        run: |
+          printf 'A\nY\n' | python3 scripts/05_deploy_services.py
+          test "$(kubectl -n argocd get applications --no-headers | wc -l)" = 9
+      - name: Script 06 (must report failures - no images on kind)
+        env:
+          ENV: dev
+          TIMEOUT_PODS: "10"
+        run: |
+          set +e
+          python3 scripts/06_verify_deployment.py
+          rc=$?
+          echo "06 exit code: $rc"
+          test "$rc" -ne 0
+      - name: Dump state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl -n argocd get applications
           kubectl get events -A --sort-by=.lastTimestamp | tail -40
