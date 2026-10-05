@@ -6,6 +6,11 @@ resource "aws_iam_openid_connect_provider" "github" {
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
+locals {
+  # Repos use immutable OIDC subjects (org@id/repo@id), so trust must match those exactly.
+  sub_prefix = var.github_repo_subject_prefixes
+}
+
 data "aws_iam_policy_document" "github_actions_assume" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
@@ -25,14 +30,14 @@ data "aws_iam_policy_document" "github_actions_assume" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_org}/backend:ref:refs/heads/main",
-        "repo:${var.github_org}/backend:ref:refs/heads/develop",
-        "repo:${var.github_org}/backend:ref:refs/heads/release/*",
-        "repo:${var.github_org}/frontend:ref:refs/heads/main",
-        "repo:${var.github_org}/frontend:ref:refs/heads/develop",
-        "repo:${var.github_org}/frontend:ref:refs/heads/release/*",
-        "repo:${var.github_org}/backend:environment:*",
-        "repo:${var.github_org}/frontend:environment:*",
+        "${local.sub_prefix["backend"]}:ref:refs/heads/main",
+        "${local.sub_prefix["backend"]}:ref:refs/heads/develop",
+        "${local.sub_prefix["backend"]}:ref:refs/heads/release/*",
+        "${local.sub_prefix["frontend"]}:ref:refs/heads/main",
+        "${local.sub_prefix["frontend"]}:ref:refs/heads/develop",
+        "${local.sub_prefix["frontend"]}:ref:refs/heads/release/*",
+        "${local.sub_prefix["backend"]}:environment:*",
+        "${local.sub_prefix["frontend"]}:environment:*",
       ]
     }
   }
@@ -94,8 +99,8 @@ data "aws_iam_policy_document" "terraform_plan_assume" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_org}/${var.infra_repo}:pull_request",
-        "repo:${var.github_org}/${var.infra_repo}:ref:refs/heads/main",
+        "${local.sub_prefix[var.infra_repo]}:pull_request",
+        "${local.sub_prefix[var.infra_repo]}:ref:refs/heads/main",
       ]
     }
   }
@@ -119,7 +124,7 @@ data "aws_iam_policy_document" "terraform_apply_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_org}/${var.infra_repo}:ref:refs/heads/main"]
+      values   = ["${local.sub_prefix[var.infra_repo]}:ref:refs/heads/main"]
     }
   }
 }

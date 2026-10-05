@@ -70,13 +70,14 @@ module "ecr" {
 module "iam" {
   source = "../../modules/iam"
 
-  project           = local.project
-  env               = local.env
-  oidc_provider_arn = module.eks.oidc_provider_arn
-  oidc_provider_url = module.eks.cluster_oidc_issuer_url
-  aws_account_id    = data.aws_caller_identity.current.account_id
-  github_org        = var.github_org
-  infra_repo        = var.infra_repo
+  project                      = local.project
+  env                          = local.env
+  oidc_provider_arn            = module.eks.oidc_provider_arn
+  oidc_provider_url            = module.eks.cluster_oidc_issuer_url
+  aws_account_id               = data.aws_caller_identity.current.account_id
+  github_org                   = var.github_org
+  infra_repo                   = var.infra_repo
+  github_repo_subject_prefixes = var.github_repo_subject_prefixes
 }
 
 module "secrets_manager" {
