@@ -11,6 +11,38 @@ This repository contains Terraform infrastructure code for mackllc. This guide i
 
 > **Scope:** The scripts below are templates to copy into separate files; this README does not install or run them. Review each script and your organization's change controls before using it against a real account or cluster. They are designed to fail explicitly, avoid embedding credentials, and require explicit flags for infrastructure or application changes.
 
+## Scripts branch and its design
+
+The bootstrap scripts (`scripts/01`–`06`) take a bare EKS cluster to running services. They are developed on a dedicated, protected branch: **`ci/bootstrap-script-tests`**. Work happens there, is tested automatically, then merges to `main`.
+
+**Branch protection** (ruleset "Protect scripts branch"): no deletion, no force-push, changes only via pull request, and these checks must pass with the branch up to date:
+
+| Required check | What it does |
+|---|---|
+| `static` | `py_compile` plus `ruff` (syntax, undefined names, unused code) on `scripts/*.py` |
+| `bootstrap smoke (01-03, kind)` | Spins up a throwaway `kind` cluster, runs scripts 01–03 with dummy AWS values, and asserts Argo CD, External Secrets, the `dev` namespace, the repo secret, the `mackllc` AppProject, the ClusterSecretStore and ExternalSecrets exist |
+| `app layer (04-06, kind)` | Fresh `kind` cluster plus the real `gitops` repo; runs 01–06 with a fake `gh` CLI so no real builds start |
+
+Defined in `.github/workflows/scripts-test.yml`. It runs on any PR or push to `main` that touches `scripts/**`, or manually (`gh workflow run scripts-test.yml`).
+
+**Script design:**
+- Numbered, run in order: 01 prerequisites (ALB controller, Argo CD, ESO) → 02 Argo CD bootstrap → 03 External Secrets → 04 trigger CI builds → 05 deploy Argo apps → 06 verify.
+- Every prompt can be preset as an environment variable, so scripts run unattended in CI (`echo Y | python3 scripts/01_...`).
+- Idempotent: safe to re-run.
+- No static credentials: AWS via SSO/IRSA, GitHub via App keys at runtime. Nothing secret is committed.
+- Cluster-free testing: `SKIP_ALB_CONTROLLER=1` lets 01–03 run on `kind`.
+
+**Workflow to change a script:**
+```bash
+git fetch origin && git checkout -b fix/my-script-change origin/ci/bootstrap-script-tests
+# edit scripts/...
+git add -A && git commit -m "fix(script): ..."
+git push -u origin fix/my-script-change
+gh pr create --base ci/bootstrap-script-tests --fill   # wait for 3 green checks, merge in the UI
+```
+
+---
+
 ## Inputs to replace
 
 Before running a script, replace every highlighted `CHANGE_ME_...` value with a value for your account and environment. These are configuration inputs, not credentials. Obtain credentials through AWS IAM Identity Center/SSO, Azure sign-in, Google Cloud authentication, workload identity, or your CI secret store. Never put access keys, passwords, tokens, private keys, or Terraform state contents in a script or commit them to Git.
