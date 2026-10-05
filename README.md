@@ -1,5 +1,47 @@
 # SAAS - HENRY FORD (infra)
 
+## The journey: v1.0 → v1.1 → v1.2 (the microservices platform)
+
+**v1.2 = 9 microservices on EKS, deployed by Argo CD, behind one ALB, with no human-held AWS keys.** Eight Java/Node services plus a UI: `auth`, `drug-catalog`, `inventory`, `supplier`, `manufacturing`, `notification`, `qc`, `api-gateway`, `mackllc-ui`.
+
+| Version | Goal | Outcome |
+|---|---|---|
+| **v1.0** | Get it working | 16 real problems hit and fixed ([log](docs/V1.0-ISSUES-AND-FIXES.md)). Mostly auth wiring: long-lived tokens and hand-typed IDs. |
+| **v1.1** | Remove static credentials | Enterprise rewire: SSO, GitHub OIDC, IRSA, GitHub App ([design](docs/V1.1-ENTERPRISE-REWIRE.md), [log](docs/V1.1-ISSUES-AND-FIXES.md)). |
+| **v1.2** | Run the real microservices end to end | All 9 services built, signed, deployed and Argo-Healthy behind one shared ALB. |
+
+### Decisions and why
+
+| Decision | Why |
+|---|---|
+| Terraform builds AWS; **Argo CD** builds the apps | Terraform only creates the ALB *controller role*. Ingress objects in `gitops` make the controller create the ALB. Git is the source of truth for what runs. |
+| Four repos: `infra`, `backend`, `frontend`, `gitops` | Separate who changes infrastructure, code and deployed state. CI never touches the cluster; it only writes an image tag to `gitops`. |
+| GitHub **OIDC** for CI to AWS | No AWS keys in GitHub. Plan role is read-only; apply role is main-only with a manual approval gate. |
+| **SSO + EKS access entries** for humans | No IAM users. Access follows the identity provider. |
+| **IRSA, one IAM role per service** | Least privilege: each pod gets only what it needs. Trust subject must be `system:serviceaccount:<ns>:<name>` (we first wrote `ns/name`; it failed). |
+| **RDS-managed, auto-rotated DB password** via External Secrets | No password in code, tfvars or Git. Pods read a synced Kubernetes secret. |
+| **One shared ALB** (Ingress group): `/` to UI, `/api` to the gateway | One load balancer and cost line instead of nine. Required adding `SetRulePriorities` to the controller policy. |
+| Immutable ECR tags, `sha-<7chars>` | Every image maps to one commit. A rebuild needs a new commit. |
+| Cosign-signed images, pinned Actions, Trivy and SAST in CI | Supply-chain integrity. Trivy is non-blocking for now so builds flow while findings are triaged. |
+| Bootstrap **scripts** with their own protected branch and `kind` tests | The cluster bring-up is repeatable and tested before it touches AWS (see below). |
+| CI writes to gitops with a **GitHub App**, not a PAT | Short-lived, scoped, auditable. A temporary `GITOPS_TOKEN` is still in use until the App swap merges. |
+
+### What it took (v1.1 → v1.2)
+
+IRSA trust subject fixed, Trivy gate and reporting steps made non-fatal, gitops push race fixed with a rebase-and-retry loop, `<ACCOUNT_ID>` placeholders filled in, ALB policy extended, and the verify script corrected to probe the real gateway routes. Full list with causes and fixes: [V1.1-ISSUES-AND-FIXES.md](docs/V1.1-ISSUES-AND-FIXES.md).
+
+### Known gaps before go-live
+
+- Replace the temporary `GITOPS_TOKEN` with the GitHub App.
+- Turn Trivy back to blocking (`exit-code 1`) after fixing findings.
+- Argo CD SSO and disabling the local admin user.
+- `jwt_secret` handling (local tfvars vs CI secret).
+- Argo CD ingress has no ALB address yet.
+
+Step-by-step deploy: [docs/DEPLOY-RUNBOOK.md](docs/DEPLOY-RUNBOOK.md).
+
+---
+
 > ## 🚨 v1.0 — Issues & Fixes
 > **16 real problems were hit and fixed while deploying this platform.** See the highlighted
 > [❌ Issues → ✅ Fixes scoreboard](docs/V1.0-ISSUES-AND-FIXES.md) and the plain-English
