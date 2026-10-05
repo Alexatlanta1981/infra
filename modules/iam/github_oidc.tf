@@ -145,6 +145,12 @@ data "aws_iam_policy_document" "terraform_plan_state" {
     actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
     resources = ["arn:aws:s3:::*terraform*", "arn:aws:s3:::*terraform*/*"]
   }
+
+  # ReadOnlyAccess omits secret values; terraform refresh reads this project's secrets only.
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/${var.project}/*"]
+  }
 }
 
 resource "aws_iam_role_policy" "terraform_plan_state" {
