@@ -72,15 +72,15 @@ jobs:
         working-directory: envs/dev
 
     steps:
-      - uses: fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Terraform ${{ env.TF_VERSION }}
-        uses: dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials
-        uses: 61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
           role-to-assume: ${{ vars.AWS_TF_PLAN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -120,15 +120,15 @@ jobs:
         working-directory: envs/dev
 
     steps:
-      - uses: fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Terraform ${{ env.TF_VERSION }}
-        uses: dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials
-        uses: 61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
           role-to-assume: ${{ vars.AWS_TF_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -164,15 +164,15 @@ jobs:
         working-directory: envs/dev
 
     steps:
-      - uses: fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Terraform ${{ env.TF_VERSION }}
-        uses: dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials
-        uses: 61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
           role-to-assume: ${{ vars.AWS_TF_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
