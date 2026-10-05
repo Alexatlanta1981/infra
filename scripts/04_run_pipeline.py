@@ -80,7 +80,7 @@ log("gh CLI found and authenticated.")
 # ---------------------------------------------------------------------------
 print()
 print("============================================")
-print("  Zen Pharma -- CI Pipeline Trigger")
+print("  MackLLC -- CI Pipeline Trigger")
 print("============================================")
 print()
 print("  This script triggers GitHub Actions CI pipelines for selected services.")
@@ -88,7 +88,7 @@ print("  Each pipeline: builds → scans → pushes image to ECR → updates git
 print()
 
 GITHUB_ORG     = prompt("GITHUB_ORG",        "GitHub username or org that owns the repos",
-                        "<your-org>", "zenpharma")
+                        "<your-org>", "mackllc")
 FRONTEND_REPO  = prompt("FRONTEND_REPO",    "GitHub repo name for frontend",
                         "frontend", "frontend")
 BACKEND_REPO   = prompt("BACKEND_REPO",     "GitHub repo name for backend",
@@ -98,7 +98,7 @@ BRANCH         = prompt("BRANCH",           "Branch to build",
 
 # Update service catalogue with user-provided repo names
 FRONTEND = [
-    ("pharma-ui",             FRONTEND_REPO, "ci-pharma-ui.yml"),
+    ("mackllc-ui",             FRONTEND_REPO, "ci-mackllc-ui.yml"),
 ]
 
 BACKEND = [
@@ -121,7 +121,7 @@ print()
 print(f"{BOLD}  Select which services to build:{NC}")
 print()
 print("    F) Frontend only")
-print("       1) pharma-ui")
+print("       1) mackllc-ui")
 print()
 print("    B) Backend only (all 8 services)")
 print("       2) auth-service")

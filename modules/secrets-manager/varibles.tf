@@ -14,12 +14,6 @@ variable "db_username" {
   sensitive   = true
 }
 
-variable "db_password" {
-  description = "Database password to store in Secrets Manager"
-  type        = string
-  sensitive   = true
-}
-
 variable "jwt_secret" {
   description = "JWT signing secret to store in Secrets Manager"
   type        = string

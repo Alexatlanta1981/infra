@@ -1,7 +1,7 @@
-# ZenPharma Dev Environment — managed via GitHub Actions CI/CD
+# MackLLC Dev Environment — managed via GitHub Actions CI/CD
 
 locals {
-  project = "pharma"
+  project = "mackllc"
   env     = "dev"
   region  = "us-east-1"
 }
@@ -32,6 +32,10 @@ module "eks" {
   min_size           = 1
   max_size           = 4
   desired_size       = 3
+
+  sso_admin_role_arn           = var.sso_admin_role_arn
+  sso_readonly_role_arn        = var.sso_readonly_role_arn
+  enable_cluster_creator_admin = var.enable_cluster_creator_admin
 }
 
 module "rds" {
@@ -39,8 +43,7 @@ module "rds" {
 
   project                    = local.project
   env                        = local.env
-  username                   = "pharmaadmin"
-  password                   = var.db_password
+  username                   = "mackllcadmin"
   vpc_id                     = module.vpc.vpc_id
   db_subnet_group_name       = module.vpc.database_subnet_group_name
   eks_node_security_group_id = module.eks.node_security_group_id
@@ -58,7 +61,7 @@ module "ecr" {
     "inventory-service",
     "manufacturing-service",
     "notification-service",
-    "pharma-ui",
+    "mackllc-ui",
     "supplier-service",
     "qc-service",
   ]
@@ -73,6 +76,7 @@ module "iam" {
   oidc_provider_url = module.eks.cluster_oidc_issuer_url
   aws_account_id    = data.aws_caller_identity.current.account_id
   github_org        = var.github_org
+  infra_repo        = var.infra_repo
 }
 
 module "secrets_manager" {
@@ -80,8 +84,7 @@ module "secrets_manager" {
 
   project     = local.project
   env         = local.env
-  db_username = "pharmaadmin"
-  db_password = var.db_password
+  db_username = "mackllcadmin"
   db_host     = module.rds.db_instance_address
   jwt_secret  = var.jwt_secret
 }

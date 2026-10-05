@@ -26,24 +26,12 @@ variable "eks_node_security_group_id" {
 variable "db_name" {
   description = "Name of the database to create"
   type        = string
-  default     = "pharmadb"
+  default     = "mackllcdb"
 }
 
 variable "username" {
   description = "Master username for the database"
   type        = string
-}
-
-variable "password" {
-  description = "Master password for the database"
-  type        = string
-  sensitive   = true
-}
-
-variable "password_version" {
-  description = "Increment to trigger a password update"
-  type        = number
-  default     = 1
 }
 
 variable "instance_class" {

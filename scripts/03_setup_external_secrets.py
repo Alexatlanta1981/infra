@@ -106,7 +106,7 @@ if subprocess.run(["which", "kubectl"], capture_output=True).returncode != 0:
 # ---------------------------------------------------------------------------
 print()
 print("============================================")
-print("  Zen Pharma -- External Secrets Setup")
+print("  MackLLC -- External Secrets Setup")
 print("============================================")
 print()
 print("  This script wires up External Secrets Operator to AWS Secrets Manager")
@@ -130,10 +130,10 @@ AWS_ACCOUNT_ID = prompt("AWS_ACCOUNT_ID",
                         "AWS account ID (12-digit number - find it in the top-right of the AWS console, or run: aws sts get-caller-identity --query Account --output text)",
                         "<aws-account-id>", subprocess.run(["aws","sts","get-caller-identity","--query","Account","--output","text"],capture_output=True,text=True).stdout.strip())
 
-default_role   = f"pharma-{ENV}-eso-role"
+default_role   = f"mackllc-{ENV}-eso-irsa"
 ESO_ROLE_NAME  = prompt("ESO_ROLE_NAME",
                         "ESO IAM role name (created by Terraform - check 'Terraform Apply' output or AWS IAM console)",
-                        "pharma-dev-eso-role", default_role)
+                        "mackllc-dev-eso-irsa", default_role)
 
 ESO_ROLE_ARN = f"arn:aws:iam::{AWS_ACCOUNT_ID}:role/{ESO_ROLE_NAME}"
 
@@ -146,8 +146,8 @@ print(f"  ESO Role ARN : {ESO_ROLE_ARN}")
 print("  ---------------------------------")
 print()
 print("  Secrets will be synced from these Secrets Manager paths:")
-print(f"    /pharma/{ENV}/db-credentials  ->  Kubernetes Secret 'db-credentials'")
-print(f"    /pharma/{ENV}/jwt-secret       ->  Kubernetes Secret 'jwt-secret'")
+print(f"    /mackllc/{ENV}/db-credentials  ->  Kubernetes Secret 'db-credentials'")
+print(f"    /mackllc/{ENV}/jwt-secret       ->  Kubernetes Secret 'jwt-secret'")
 print()
 confirm = input("  Continue? [Y/n]: ").strip() or "Y"
 if confirm.upper() != "Y":
@@ -241,6 +241,8 @@ print("--------------------------------------------")
 print(f"  Step 3 of 4: ExternalSecrets -> namespace '{ENV}'")
 print("--------------------------------------------")
 
+RDS_SECRET_ARN = run_cmd(
+    ["terraform", "-chdir=envs/dev", "output", "-raw", "rds_master_secret_arn"], capture=True)[0]
 db_external_secret = f"""\
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
@@ -248,7 +250,7 @@ metadata:
   name: db-credentials
   namespace: {ENV}
 spec:
-  refreshInterval: 1h
+  refreshInterval: 15m
   secretStoreRef:
     name: aws-secrets-manager
     kind: ClusterSecretStore
@@ -258,23 +260,23 @@ spec:
   data:
     - secretKey: DB_USERNAME
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: {RDS_SECRET_ARN}
         property: username
     - secretKey: DB_PASSWORD
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: {RDS_SECRET_ARN}
         property: password
     - secretKey: SPRING_DATASOURCE_USERNAME
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: {RDS_SECRET_ARN}
         property: username
     - secretKey: SPRING_DATASOURCE_PASSWORD
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: {RDS_SECRET_ARN}
         property: password
     - secretKey: DB_HOST
       remoteRef:
-        key: /pharma/{ENV}/db-credentials
+        key: /mackllc/{ENV}/db-config
         property: host
 """
 kubectl_apply_yaml(db_external_secret)
@@ -296,7 +298,7 @@ spec:
   data:
     - secretKey: JWT_SECRET
       remoteRef:
-        key: /pharma/{ENV}/jwt-secret
+        key: /mackllc/{ENV}/jwt-secret
         property: secret
 """
 kubectl_apply_yaml(jwt_external_secret)
@@ -347,8 +349,8 @@ else:
     warn("Secrets not yet synced. Common causes:")
     warn("")
     warn(f"  1. Secrets Manager paths do not exist - create them first:")
-    warn(f"       /pharma/{ENV}/db-credentials  (JSON: {{\"username\":\"...\",\"password\":\"...\"}})")
-    warn(f"       /pharma/{ENV}/jwt-secret       (JSON: {{\"secret\":\"...\"}})")
+    warn(f"       /mackllc/{ENV}/db-credentials  (JSON: {{\"username\":\"...\",\"password\":\"...\"}})")
+    warn(f"       /mackllc/{ENV}/jwt-secret       (JSON: {{\"secret\":\"...\"}})")
     warn("")
     warn(f"  2. IAM role '{ESO_ROLE_NAME}' is missing secretsmanager:GetSecretValue")
     warn("")

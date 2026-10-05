@@ -1,144 +1,15 @@
-# ─── External Secrets Operator (ESO) IRSA Role ─────────────────────────────
-# Allows ESO to read secrets from AWS Secrets Manager
-
-data "aws_iam_policy_document" "eso_assume_role" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    effect  = "Allow"
-
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(var.oidc_provider_url, "https://", "")}:sub"
-      values   = ["system:serviceaccount:external-secrets:external-secrets"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(var.oidc_provider_url, "https://", "")}:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-
-    principals {
-      identifiers = [var.oidc_provider_arn]
-      type        = "Federated"
-    }
-  }
-}
-
-resource "aws_iam_role" "eso_role" {
-  name               = "${var.project}-${var.env}-eso-role"
-  assume_role_policy = data.aws_iam_policy_document.eso_assume_role.json
-
-  tags = {
-    Name    = "${var.project}-${var.env}-eso-role"
-    Env     = var.env
-    Project = var.project
-  }
-}
-
-resource "aws_iam_policy" "eso_secrets_policy" {
-  name        = "${var.project}-${var.env}-eso-secrets-policy"
-  description = "Allow External Secrets Operator to read pharma secrets from AWS Secrets Manager"
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "secretsmanager:GetSecretValue",
-          "secretsmanager:DescribeSecret"
-        ]
-        Resource = "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/pharma/*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "eso_secrets_attachment" {
-  role       = aws_iam_role.eso_role.name
-  policy_arn = aws_iam_policy.eso_secrets_policy.arn
-}
-
-# ─── ArgoCD IRSA Role ──────────────────────────────────────────────────────
-
-data "aws_iam_policy_document" "argocd_assume_role" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    effect  = "Allow"
-
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(var.oidc_provider_url, "https://", "")}:sub"
-      values   = ["system:serviceaccount:argocd:argocd-application-controller"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(var.oidc_provider_url, "https://", "")}:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-
-    principals {
-      identifiers = [var.oidc_provider_arn]
-      type        = "Federated"
-    }
-  }
-}
-
-resource "aws_iam_role" "argocd_role" {
-  name               = "${var.project}-${var.env}-argocd-role"
-  assume_role_policy = data.aws_iam_policy_document.argocd_assume_role.json
-
-  tags = {
-    Name    = "${var.project}-${var.env}-argocd-role"
-    Env     = var.env
-    Project = var.project
-  }
-}
-
-# ─── AWS Load Balancer Controller IRSA Role ─────────────────────────────────
-
-data "aws_iam_policy_document" "alb_controller_assume_role" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    effect  = "Allow"
-
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(var.oidc_provider_url, "https://", "")}:sub"
-      values   = ["system:serviceaccount:kube-system:aws-load-balancer-controller"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(var.oidc_provider_url, "https://", "")}:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-
-    principals {
-      identifiers = [var.oidc_provider_arn]
-      type        = "Federated"
-    }
-  }
-}
-
-resource "aws_iam_role" "alb_controller_role" {
-  name               = "${var.project}-${var.env}-alb-controller-role"
-  assume_role_policy = data.aws_iam_policy_document.alb_controller_assume_role.json
-
-  tags = {
-    Name    = "${var.project}-${var.env}-alb-controller-role"
-    Env     = var.env
-    Project = var.project
-  }
-}
-
-resource "aws_iam_policy" "alb_controller_policy" {
-  name        = "${var.project}-${var.env}-alb-controller-policy"
-  description = "IAM policy for AWS Load Balancer Controller"
-
-  policy = jsonencode({
+locals {
+  # Kubernetes service account name == component name; one IAM role per microservice
+  microservices = toset([
+    "api-gateway", "auth-service", "drug-catalog-service", "inventory-service",
+    "manufacturing-service", "notification-service", "mackllc-ui", "qc-service",
+    "supplier-service",
+  ])
+  # Argo CD runs once per environment; Helm renders inside repo-server and
+  # deploys via the controller, so both inherit the Argo CD identity.
+  argocd_envs  = toset(["dev", "qa", "prod"])
+  secrets_read = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+  alb_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -255,9 +126,87 @@ resource "aws_iam_policy" "alb_controller_policy" {
       }
     ]
   })
+  alb_boundary = ["acm:*", "cognito-idp:*", "ec2:*", "elasticloadbalancing:*", "iam:CreateServiceLinkedRole", "iam:GetServerCertificate", "iam:ListServerCertificates", "shield:*", "waf-regional:*", "wafv2:*"]
 }
 
-resource "aws_iam_role_policy_attachment" "alb_controller_policy_attachment" {
-  role       = aws_iam_role.alb_controller_role.name
-  policy_arn = aws_iam_policy.alb_controller_policy.arn
+# ─── Platform add-ons (IRSA) ────────────────────────────────────────────────
+module "eso" {
+  source            = "../irsa-role"
+  project           = var.project
+  env               = var.env
+  component         = "eso"
+  oidc_provider_arn = var.oidc_provider_arn
+  oidc_provider_url = var.oidc_provider_url
+  service_accounts  = ["external-secrets/external-secrets"]
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = local.secrets_read
+      Resource = [
+        "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/mackllc/*",
+        "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:rds!db-*"
+      ]
+    }]
+  })
+  boundary_allowed_actions = local.secrets_read
+}
+
+module "alb_controller" {
+  source                   = "../irsa-role"
+  project                  = var.project
+  env                      = var.env
+  component                = "alb-controller"
+  oidc_provider_arn        = var.oidc_provider_arn
+  oidc_provider_url        = var.oidc_provider_url
+  service_accounts         = ["kube-system/aws-load-balancer-controller"]
+  policy_json              = local.alb_policy
+  boundary_allowed_actions = local.alb_boundary
+}
+
+# One Argo CD role per environment. Needs no AWS API access (ECR pulls use
+# node/IRSA of workloads), so the boundary only allows ECR read.
+module "argocd" {
+  for_each          = local.argocd_envs
+  source            = "../irsa-role"
+  project           = var.project
+  env               = each.key
+  component         = "argocd"
+  oidc_provider_arn = var.oidc_provider_arn
+  oidc_provider_url = var.oidc_provider_url
+  service_accounts = [
+    "argocd/argocd-application-controller",
+    "argocd/argocd-repo-server",
+    "argocd/argocd-server",
+  ]
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ecr:GetAuthorizationToken"]
+      Resource = "*"
+    }]
+  })
+  boundary_allowed_actions = ["ecr:GetAuthorizationToken", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+}
+
+# ─── One role / trust / boundary / policy per microservice ──────────────────
+module "microservice" {
+  for_each          = local.microservices
+  source            = "../irsa-role"
+  project           = var.project
+  env               = var.env
+  component         = each.key
+  oidc_provider_arn = var.oidc_provider_arn
+  oidc_provider_url = var.oidc_provider_url
+  service_accounts  = ["${var.env}/${each.key}"]
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = local.secrets_read
+      Resource = "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:/mackllc/${var.env}/${each.key}/*"
+    }]
+  })
+  boundary_allowed_actions = local.secrets_read
 }

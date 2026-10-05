@@ -30,6 +30,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   TF_VERSION: '1.15.6'
@@ -41,27 +42,47 @@ concurrency:
   cancel-in-progress: false   # wait, don't cancel — safer for Terraform
 
 jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Guard - no IAM users or access keys
+        run: |
+          if grep -rEn 'resource +"aws_iam_(user|access_key|user_login_profile)"' --include=*.tf modules envs; then
+            echo "IAM users/keys are forbidden. Use SSO, OIDC and IRSA."; exit 1
+          fi
+      - name: Trivy IaC misconfiguration scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
   # ── Plan ──────────────────────────────────────────────────────────────────
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: envs/dev
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Terraform ${{ env.TF_VERSION }}
-        uses: hashicorp/setup-terraform@v4
+        uses: dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: 61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_TF_PLAN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Format Check
@@ -80,7 +101,6 @@ jobs:
       - name: Terraform Plan
         run: |
           terraform plan \
-            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
             -var="github_org=${{ vars.GH_ORG }}" \
             -no-color
@@ -89,6 +109,7 @@ jobs:
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: plan
     if: |
       (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
@@ -99,18 +120,17 @@ jobs:
         working-directory: envs/dev
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Terraform ${{ env.TF_VERSION }}
-        uses: hashicorp/setup-terraform@v4
+        uses: dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: 61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_TF_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
@@ -119,7 +139,6 @@ jobs:
       - name: Terraform Apply
         run: |
           terraform apply \
-            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
             -var="github_org=${{ vars.GH_ORG }}" \
             -auto-approve \
@@ -134,6 +153,7 @@ jobs:
   destroy:
     name: Terraform Destroy
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: |
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.action == 'destroy' &&
@@ -144,18 +164,17 @@ jobs:
         working-directory: envs/dev
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Terraform ${{ env.TF_VERSION }}
-        uses: hashicorp/setup-terraform@v4
+        uses: dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: 61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_TF_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
@@ -164,7 +183,6 @@ jobs:
       - name: Terraform Destroy
         run: |
           terraform destroy \
-            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
             -var="github_org=${{ vars.GH_ORG }}" \
             -auto-approve \
