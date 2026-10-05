@@ -6,7 +6,7 @@ locals {
   base    = "${var.project}-${var.env}-${var.component}"
   issuer  = replace(var.oidc_provider_url, "https://", "")
   tags    = { Project = var.project, Env = var.env, Component = var.component, ManagedBy = "terraform" }
-  sa_subs = [for sa in var.service_accounts : "system:serviceaccount:${sa}"]
+  sa_subs = [for sa in var.service_accounts : "system:serviceaccount:${replace(sa, "/", ":")}"]
 }
 
 # Trust policy: only the named service accounts, via the cluster OIDC provider
