@@ -102,7 +102,7 @@ print("    1. EKS cluster name         - from Terraform outputs or AWS console")
 print("    2. AWS region               - where your cluster is running")
 print("    3. VPC ID                   - VPC where the cluster lives (auto-fetched if blank)")
 print("    4. ALB controller role ARN  - IAM role ARN for the ALB controller")
-print("       (arn:aws:iam::<account-id>:role/<project>-<env>-alb-controller-role)")
+print("       (arn:aws:iam::<account-id>:role/<project>-<env>-alb-controller-irsa)")
 print()
 
 CLUSTER_NAME        = prompt("CLUSTER_NAME",        "EKS cluster name",
@@ -110,8 +110,8 @@ CLUSTER_NAME        = prompt("CLUSTER_NAME",        "EKS cluster name",
 AWS_REGION          = prompt("AWS_REGION",          "AWS region where the cluster is deployed",
                              "us-east-1", "us-east-1")
 ALB_CONTROLLER_ROLE = prompt("ALB_CONTROLLER_ROLE", "IAM role ARN for the AWS Load Balancer Controller",
-                             "arn:aws:iam::<aws-account-id>:role/pharma-dev-alb-controller-role",
-                             "arn:aws:iam::"+subprocess.run(["aws","sts","get-caller-identity","--query","Account","--output","text"],capture_output=True,text=True).stdout.strip()+":role/pharma-dev-alb-controller-role")
+                             "arn:aws:iam::<aws-account-id>:role/pharma-dev-alb-controller-irsa",
+                             "arn:aws:iam::"+subprocess.run(["aws","sts","get-caller-identity","--query","Account","--output","text"],capture_output=True,text=True).stdout.strip()+":role/pharma-dev-alb-controller-irsa")
 
 default_gitops = os.path.join(DEFAULT_PROJECT_ROOT, "gitops")
 GITOPS_PATH         = prompt("GITOPS_PATH",         "Local path to your gitops repo",

@@ -22,3 +22,12 @@ output "terraform_apply_role_arn" {
   description = "Set as repo variable AWS_TF_APPLY_ROLE_ARN"
   value       = module.iam.terraform_apply_role_arn
 }
+
+output "argocd_role_arns" {
+  value = module.iam.argocd_role_arns
+}
+
+output "microservice_role_arns" {
+  description = "Put each ARN in that service's serviceAccount annotation in gitops"
+  value       = module.iam.microservice_role_arns
+}

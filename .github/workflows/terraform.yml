@@ -49,6 +49,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Guard - no IAM users or access keys
+        run: |
+          if grep -rEn 'resource +"aws_iam_(user|access_key|user_login_profile)"' --include=*.tf modules envs; then
+            echo "IAM users/keys are forbidden. Use SSO, OIDC and IRSA."; exit 1
+          fi
       - name: Trivy IaC misconfiguration scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

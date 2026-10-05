@@ -39,7 +39,7 @@ data "aws_iam_policy_document" "github_actions_assume" {
 }
 
 resource "aws_iam_role" "github_actions" {
-  name               = "${var.project}-${var.env}-github-actions-role"
+  name               = "${var.project}-${var.env}-ecr-push-gha"
   assume_role_policy = data.aws_iam_policy_document.github_actions_assume.json
 }
 
@@ -125,7 +125,7 @@ data "aws_iam_policy_document" "terraform_apply_assume" {
 }
 
 resource "aws_iam_role" "terraform_plan" {
-  name               = "${var.project}-${var.env}-terraform-plan-role"
+  name               = "${var.project}-${var.env}-terraform-plan-gha"
   assume_role_policy = data.aws_iam_policy_document.terraform_plan_assume.json
 }
 
@@ -149,7 +149,7 @@ resource "aws_iam_role_policy" "terraform_plan_state" {
 }
 
 resource "aws_iam_role" "terraform_apply" {
-  name               = "${var.project}-${var.env}-terraform-apply-role"
+  name               = "${var.project}-${var.env}-terraform-apply-gha"
   assume_role_policy = data.aws_iam_policy_document.terraform_apply_assume.json
 }
 
