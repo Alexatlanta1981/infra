@@ -34,7 +34,7 @@ for r in infra backend frontend gitops; do git clone https://github.com/<ORG>/$r
    aws s3api create-bucket --bucket <STATE_BUCKET> --region us-east-1
    aws s3api put-bucket-versioning --bucket <STATE_BUCKET> --versioning-configuration Status=Enabled
    ```
-2. Create the GitHub OIDC provider and the two Terraform CI roles (plan = read-only, apply = write) in AWS IAM. Trust them to `repo:<ORG>/infra`.
+2. Create the GitHub OIDC provider and the two Terraform CI roles (plan = read-only, apply = write) from the separate `envs/bootstrap` root, with admin credentials (never via CI): `cd envs/bootstrap && terraform init && terraform apply`. It has its own state, so `destroy` of `envs/dev` cannot remove CI login. Set the printed role ARNs as the `AWS_TF_PLAN_ROLE_ARN` / `AWS_TF_APPLY_ROLE_ARN` repo variables.
 3. Edit `envs/dev/backend.tf` (bucket) and `envs/dev/variables.tf` defaults (`github_org`, `sso_admin_role_arn`).
 
 **Verify:** `aws s3api get-bucket-versioning --bucket <STATE_BUCKET>` shows `Enabled`; `aws iam list-open-id-connect-providers` lists `token.actions.githubusercontent.com`; `aws iam list-roles --query 'Roles[].RoleName'` shows both CI roles.
@@ -197,7 +197,7 @@ helm uninstall aws-load-balancer-controller -n kube-system
 ```
 Verify: `helm list -A` shows none of the three.
 
-**5. Destroy AWS (VPC, EKS, RDS, ECR, IAM) via CI**
+**5. Destroy AWS (VPC, EKS, RDS, ECR, workload IAM) via CI** (the OIDC provider and CI roles in `envs/bootstrap` are intentionally left in place)
 ```bash
 gh workflow run terraform.yml -R <ORG>/infra -f action=destroy -f confirm_destroy=destroy
 gh run list -R <ORG>/infra --workflow terraform.yml --limit 1
