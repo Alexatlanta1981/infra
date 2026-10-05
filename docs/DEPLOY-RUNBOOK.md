@@ -83,7 +83,7 @@ Needed so CI can write image tags to the `gitops` repo and Argo CD can read it.
 - Also set in both repos: variable `GITOPS_REPO` (`<ORG>/gitops`), secret `AWS_ACCOUNT_ID`, plus the Sonar/NVD secrets.
 - For Argo CD read access, create a read-only App (Contents: read) and keep its App ID, installation ID, and `.pem` for step 7.
 
-> Status: workflows currently use a temporary `GITOPS_TOKEN` secret until the App swap is merged. See `V1.1-ISSUES-AND-FIXES.md`.
+> Status: workflows mint a short-lived GitHub App token (`GITOPS_APP_ID` variable + `GITOPS_APP_PRIVATE_KEY` secret). The old `GITOPS_TOKEN` is being retired.
 
 ## 7. Install cluster components (scripts, in order)
 
