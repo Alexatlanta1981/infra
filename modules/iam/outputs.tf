@@ -7,7 +7,7 @@ output "alb_controller_role_arn" {
 }
 
 output "argocd_role_arns" {
-  description = "Argo CD role ARN per environment (dev, stage, prod)"
+  description = "Argo CD role ARN per environment (dev, qa, prod)"
   value       = { for k, m in module.argocd : k => m.role_arn }
 }
 

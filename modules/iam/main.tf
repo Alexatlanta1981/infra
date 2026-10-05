@@ -7,7 +7,7 @@ locals {
   ])
   # Argo CD runs once per environment; Helm renders inside repo-server and
   # deploys via the controller, so both inherit the Argo CD identity.
-  argocd_envs  = toset(["dev", "stage", "prod"])
+  argocd_envs  = toset(["dev", "qa", "prod"])
   secrets_read = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
   alb_policy = jsonencode({
     Version = "2012-10-17"
