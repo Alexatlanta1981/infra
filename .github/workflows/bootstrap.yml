@@ -12,9 +12,6 @@ on:
       - 'modules/ci-oidc/**'
   pull_request:
     branches: [main]
-    paths:
-      - 'envs/bootstrap/**'
-      - 'modules/ci-oidc/**'
   workflow_dispatch:
 
 permissions:
