@@ -90,7 +90,16 @@ kubectl get nodes
 
 Needed so CI can write image tags to the `gitops` repo and Argo CD can read it.
 
-- Create a GitHub App with Contents: write, Pull requests: write, Metadata: read. Install it on the `gitops` repo only.
+Two Apps are needed (2 private keys total):
+
+| App | Permission | Credentials go in |
+|---|---|---|
+| Writer (CI) | Contents: **write**, Pull requests: write, Metadata: read | `backend` and `frontend` repos, `dev` environment: variable `GITOPS_APP_ID`, secret `GITOPS_APP_PRIVATE_KEY`; plus the gitops ruleset bypass list |
+| Reader (Argo CD) | Contents: **read** only | Cluster secret `gitops-repo` (namespace `argocd`) via script 02: App ID, installation ID, `.pem` path |
+
+Details:
+
+- Create the writer GitHub App with Contents: write, Pull requests: write, Metadata: read. Install it on the `gitops` repo only.
 - In the `backend` and `frontend` repos, `dev` environment: variable `GITOPS_APP_ID`, secret `GITOPS_APP_PRIVATE_KEY` (the `.pem` contents).
 - Also set in both repos: variable `GITOPS_REPO` (`<ORG>/gitops`), secret `AWS_ACCOUNT_ID`, plus the Sonar/NVD secrets.
 - For Argo CD read access, create a **separate** read-only App (Contents: read), owned by the org, installed on `gitops` only. Keep its App ID, installation ID, and a generated `.pem` for step 7.
