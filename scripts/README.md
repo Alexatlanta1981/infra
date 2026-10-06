@@ -16,12 +16,13 @@ Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops), [backend](
                    Argo CD sync)            wait for images)
 ```
 
-Each script prompts for what it needs, skips any prompt already set in the environment, and can be re-run safely.
+Scripts 01-06 prompt for what they need, skip prompts already satisfied by the environment, and can be re-run safely. Script 00 is a one-time AWS bootstrap step and is not intended to be re-run after bucket creation.
 
 ## Layout
 
 | Script | Purpose |
 |---|---|
+| `00_create_state_bucket.sh` | Creates the Terraform state S3 bucket and enables versioning. Run once during AWS bootstrap; uses the active AWS CLI credentials and `AWS_REGION` (default `us-east-1`). |
 | `01_install_prerequisites.py` | Installs the ALB controller, Argo CD and External Secrets with Helm. Restarts the ALB controller so its webhook cert is fresh. |
 | `02_bootstrap_argocd.py` | Gives Argo CD access to `gitops`, creates the `mackllc` project and the root app for the chosen `ENV`. |
 | `03_setup_external_secrets.py` | Creates the ClusterSecretStore and ExternalSecrets from the RDS and Secrets Manager entries. |
