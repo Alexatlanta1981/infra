@@ -149,8 +149,7 @@ GITHUB_APP_INSTALLATION_ID = prompt("GITHUB_APP_INSTALLATION_ID", "GitHub App in
 if GITHUB_APP_INSTALLATION_ID.strip() == GITHUB_APP_ID.strip():
     die("Installation ID equals the App ID. Get the installation ID from Install App > gear icon (number at the end of the URL).")
 GITHUB_APP_KEY_PATH = prompt("GITHUB_APP_KEY_PATH", "Path to the GitHub App private key (.pem)", "~/app.pem", "")
-with open(os.path.expanduser(GITHUB_APP_KEY_PATH)) as _f:
-    GITHUB_APP_KEY = _f.read()
+GITHUB_APP_KEY_PATH = os.path.expanduser(GITHUB_APP_KEY_PATH)
 
 default_gitops = os.path.join(DEFAULT_PROJECT_ROOT, "gitops")
 GITOPS_PATH     = prompt("GITOPS_PATH", "Local path to your gitops repo",
@@ -198,7 +197,7 @@ dry_run_result = subprocess.run(
         f"--from-literal=url={GITOPS_REPO_URL}",
         f"--from-literal=githubAppID={GITHUB_APP_ID}",
         f"--from-literal=githubAppInstallationID={GITHUB_APP_INSTALLATION_ID}",
-        f"--from-literal=githubAppPrivateKey={GITHUB_APP_KEY}",
+        f"--from-file=githubAppPrivateKey={GITHUB_APP_KEY_PATH}",
         "--dry-run=client", "-o", "yaml",
     ],
     capture_output=True, text=True,
