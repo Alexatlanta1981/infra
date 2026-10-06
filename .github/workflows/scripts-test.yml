@@ -147,6 +147,7 @@ jobs:
         env:
           ENV: dev
           GITHUB_USERNAME: Alexatlanta1981
+          AWS_ACCOUNT_ID: "111122223333"
           GITOPS_PATH: ${{ github.workspace }}/gitops
           POLL_INTERVAL: "5"
           MAX_WAIT: "20"

@@ -143,8 +143,9 @@ print(f"        This is used to replace placeholders in ArgoCD Application manif
 GITHUB_USERNAME = prompt("GITHUB_USERNAME", "Your personal GitHub username",
                          "<your-github-username>", "ravdsun")
 
-AWS_ACCOUNT_ID = subprocess.run(["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"],
-                                capture_output=True, text=True).stdout.strip()
+AWS_ACCOUNT_ID = os.environ.get("AWS_ACCOUNT_ID") or subprocess.run(
+    ["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"],
+    capture_output=True, text=True).stdout.strip()
 if not AWS_ACCOUNT_ID.isdigit():
     die("Could not read AWS account ID (aws sts get-caller-identity). Check AWS_PROFILE / login.")
 
