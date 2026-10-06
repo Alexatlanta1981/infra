@@ -29,14 +29,14 @@ This script fills in the GitHub settings that let CI use your AWS infrastructure
 After the script's PR is approved and merged into `main`, run:
 
 ```bash
-cd ~/devops/chris/infra
+cd ~/devops/infra
 git status --short
 ```
 
 If this prints changed or untracked files, stop and preserve them before switching branches. Do not delete files or discard changes to force the next commands to work. With a clean checkout:
 
 ```bash
-cd ~/devops/chris/infra
+cd ~/devops/infra
 git switch main &&
 git pull --ff-only origin main &&
 ls scripts/00_setup_github_settings.sh
@@ -84,7 +84,7 @@ Keep this terminal open. These values are local terminal settings, not edits to 
 ### 3. Check that Terraform bootstrap finished
 
 ```bash
-cd ~/devops/chris/infra/envs/bootstrap
+cd ~/devops/infra/envs/bootstrap
 terraform output
 ```
 
@@ -100,7 +100,7 @@ These ARNs are examples. If either output is missing or Terraform reports an err
 ### 4. Run the script and answer its prompts
 
 ```bash
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 ./00_setup_github_settings.sh
 ```
 
@@ -159,18 +159,18 @@ Only after that success message should you continue to [runbook step 4](../docs/
 aws sso login --profile your-sso-profile
 export AWS_PROFILE=your-sso-profile
 aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1
-export GITOPS_PATH=~/devops/chris/gitops     # local clone of gitops
-cd ~/devops/chris/infra/scripts
+export GITOPS_PATH=~/devops/gitops     # local clone of gitops
+cd ~/devops/infra/scripts
 python3 01_install_prerequisites.py          # then 02 ... 06 in order
 ```
 
 Build and deploy with presets (replace the `<...>` values; see the runbook, step 8):
 
 ```bash
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 GITHUB_ORG=<GITHUB_ORG> FRONTEND_REPO=<FRONTEND_REPO> BACKEND_REPO=<BACKEND_REPO> BRANCH=<BRANCH> \
   AWS_PROFILE=<AWS_SSO_PROFILE> python3 04_run_pipeline.py
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 AWS_PROFILE=<AWS_SSO_PROFILE> python3 05_deploy_services.py
 ```
 
@@ -222,7 +222,7 @@ gh api repos/<ORG>/gitops/rulesets/<RULESET_ID> --jq '.bypass_actors'
 gh run list -R <ORG>/backend --limit 8          # all success
 gh run list -R <ORG>/frontend --limit 1
 aws ecr describe-images --repository-name <ECR_REPO> --query 'imageDetails[].imageTags'
-git -C ~/devops/chris/gitops pull && git -C ~/devops/chris/gitops log --oneline -10   # ci(dev) tag commits
+git -C ~/devops/gitops pull && git -C ~/devops/gitops log --oneline -10   # ci(dev) tag commits
 
 # Cluster
 export AWS_PROFILE=<AWS_SSO_PROFILE>
@@ -237,7 +237,7 @@ kubectl describe application <APP>-dev -n argocd | grep -i -A3 "error\|401"   # 
 # Endpoints
 curl -s -o /dev/null -w '%{http_code}\n' http://<ALB_HOSTNAME>/        # 200
 curl -s -o /dev/null -w '%{http_code}\n' http://<ALB_HOSTNAME>/api/    # 200/401/403/404, not 502/503
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 echo 1 | python3 06_verify_deployment.py
 ```
 

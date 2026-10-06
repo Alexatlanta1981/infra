@@ -23,7 +23,7 @@ Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops) (desired st
 └────────────────────────────────┘
 ```
 
-Two Terraform roots with **separate state** (bucket `chris-m-terraform-state-buk01`):
+Two Terraform roots with **separate state keys** in your own S3 state bucket:
 
 - `envs/bootstrap`: the GitHub OIDC provider and the CI plan and apply roles. Never destroyed with the environment.
 - `envs/dev`: everything else. `qa` and `prod` are placeholders.
@@ -42,18 +42,26 @@ Two Terraform roots with **separate state** (bucket `chris-m-terraform-state-buk
 
 ## Running it
 
+### Run in your own AWS account (including recruiter demos)
+
+You do not need the original author's AWS account or SSO profile. Use an AWS account where you are authorized through IAM Identity Center (SSO), and fork or copy all four companion repositories into your own GitHub owner while retaining the names `infra`, `backend`, `frontend`, and `gitops`. Configure Actions variables, secrets, OIDC subjects, and the `dev` approval environment on your own repositories; these settings are not supplied by cloning this repository.
+
+Follow the [deployment runbook](docs/DEPLOY-RUNBOOK.md) with your own AWS SSO profile, GitHub owner, SSO role ARN, and globally unique state bucket. Commands use `~/devops` as an example clone directory; replace it with your actual directory. Bootstrap discovers the account from your authenticated AWS identity and creates CI roles in that account. The GitHub settings script reads those role outputs and selects its signed-in GitHub user as the deployment reviewer; no particular person's login is built into it.
+
+**SSO is authorization-scoped:** signing in does not grant access to another person's AWS account. Your own account needs administrator permissions for bootstrap. Deploying VPC, EKS, and RDS incurs AWS charges. SSO for workstation access, STS role sessions, GitHub OIDC for CI, and IRSA for pods remain the authentication model; do not substitute static AWS access keys. Verify the repository OIDC subject configuration as described in the runbook before using CI.
+
 **Setting up for the first time?** Follow the [deployment runbook](docs/DEPLOY-RUNBOOK.md) in order. After Terraform bootstrap finishes, use the [plain-language step-3 instructions](scripts/README.md#step-3-set-up-github-settings-start-here-after-terraform-bootstrap) to get the GitHub settings script locally, enter your values, run it, and verify success.
 
 ### Step 3: get and run the GitHub settings script
 
-**Already deployed or recovering missing outputs?** Keep the existing state bucket, `chris-m-terraform-state-buk01`, and follow the [existing-state checks and recovery instructions](docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites) first. Do not create a replacement bucket or apply an import/create plan merely because local outputs are missing.
+**Already deployed or recovering missing outputs?** Keep your existing state bucket and follow the [existing-state checks and recovery instructions](docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites) first. Do not create a replacement bucket or apply an import/create plan merely because local outputs are missing.
 
 Follow these commands in order, in the same Ubuntu/WSL terminal. Terraform bootstrap (runbook step 2) must have completed, and the script's PR must be merged into `main`. A merged PR does **not** automatically update files on your laptop.
 
 **3.A Check your local checkout before updating**
 
 ```bash
-cd ~/devops/chris/infra
+cd ~/devops/infra
 git status --short
 ```
 
@@ -62,7 +70,7 @@ Expected output: nothing. If any changed or untracked files are listed, **stop a
 **3.B Switch to main, download the merged changes, and check the file**
 
 ```bash
-cd ~/devops/chris/infra
+cd ~/devops/infra
 git switch main &&
 git pull --ff-only origin main &&
 ls scripts/00_setup_github_settings.sh
@@ -104,7 +112,7 @@ Check that `Account` is your intended AWS account. The GitHub account shown beco
 **3.E Verify Terraform bootstrap outputs**
 
 ```bash
-cd ~/devops/chris/infra/envs/bootstrap
+cd ~/devops/infra/envs/bootstrap
 terraform output
 ```
 
@@ -113,7 +121,7 @@ Expect both `terraform_plan_role_arn` and `terraform_apply_role_arn` with your a
 **3.F Run the script**
 
 ```bash
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 ./00_setup_github_settings.sh
 ```
 
