@@ -132,7 +132,7 @@ The script prints the saved variables, secret names (not secret values), and env
 Setup complete. No workflows were dispatched, commits pushed, or PRs merged.
 ```
 
-Only after that success message should you continue to [runbook step 4](../docs/DEPLOY-RUNBOOK.md#4-create-the-aws-infrastructure-terraform-via-git). If an error appears, stop. Some settings may already have changed; read the error and inspect them before retrying.
+Only after that success message should you continue to [runbook step 4](../docs/DEPLOY-RUNBOOK.md#4-ci-plans-current-stopping-point). If an error appears, stop. Some settings may already have changed; read the error and inspect them before retrying.
 
 | Problem | What to do |
 |---|---|
