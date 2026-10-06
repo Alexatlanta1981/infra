@@ -79,12 +79,7 @@ export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
 cd ~/devops/chris/infra
 ```
 
-1. **Create the state bucket in AWS.** Choose a globally unique name, for example `mackllc-terraform-state-123456789012`. Replace `<STATE_BUCKET>` with your chosen name (omit the angle brackets). The script displays the AWS account and asks for confirmation before it creates the bucket and enables versioning:
-   ```bash
-   scripts/00_create_state_bucket.sh <STATE_BUCKET>
-   ```
-   It uses the `AWS_PROFILE` already set in your terminal and `AWS_REGION` (default `us-east-1`). Confirm the displayed account and region before answering `y`.
-   **Keep this name.** Use the exact same bucket name in the Terraform command below and in GitHub in step 3.
+1. **Create the state bucket in AWS** by following [Create the Terraform state bucket](../scripts/README.md#create-the-terraform-state-bucket) in the scripts README. Keep the exact bucket name; use it for Terraform initialization below and for `TF_STATE_BUCKET` in step 3.
 2. **Create the GitHub CI login in AWS.** From your `infra` folder, generate the GitHub OIDC subjects:
    ```bash
    GITHUB_ORG=<ORG> scripts/00_oidc_subjects.sh
@@ -97,7 +92,7 @@ cd ~/devops/chris/infra
    ```
    Save the plan-role and apply-role ARNs printed by Terraform. In step 3, enter them as the `AWS_TF_PLAN_ROLE_ARN` and `AWS_TF_APPLY_ROLE_ARN` repository variables. This bootstrap root has separate state, so destroying `envs/dev` will not remove the CI login.
 
-**Verify:** `aws s3api get-bucket-versioning --bucket <STATE_BUCKET> --profile "$AWS_PROFILE"` shows `Enabled`; `aws iam list-open-id-connect-providers --profile "$AWS_PROFILE"` lists `token.actions.githubusercontent.com`; `aws iam list-roles --query 'Roles[].RoleName' --profile "$AWS_PROFILE"` shows both CI roles.
+**Verify:** the bucket script reports versioning `Enabled`; `aws iam list-open-id-connect-providers --profile "$AWS_PROFILE"` lists `token.actions.githubusercontent.com`; `aws iam list-roles --query 'Roles[].RoleName' --profile "$AWS_PROFILE"` shows both CI roles.
 
 ## 3. GitHub settings for `infra`
 
