@@ -142,9 +142,7 @@ print()
 ENV             = prompt_choice("ENV", "Target environment (choose the namespace to deploy applications to)",
                                 ["dev", "qa", "prod"])
 GITOPS_REPO_URL = prompt("GITOPS_REPO_URL", "GitOps repository HTTPS URL",
-                          "https://github.com/Mohanraj133/mackllc.git",
-                          "https://github.com/Mohanraj133/mackllc.git")
-                        
+                          "https://github.com/your-github-owner/gitops.git")
 
 GITHUB_APP_ID = prompt("GITHUB_APP_ID", "GitHub App ID (read-only Contents on gitops)", "123456", "")
 GITHUB_APP_INSTALLATION_ID = prompt("GITHUB_APP_INSTALLATION_ID", "GitHub App installation ID", "12345678", "")
@@ -277,7 +275,7 @@ print("  Applications will be deployed in step 05 after images are built.")
 print()
 print("  To open ArgoCD UI:")
 print("    kubectl port-forward svc/argocd-server -n argocd 8080:443")
-print("    Open: https://localhost:8080  (login: admin / <password from script 01>)")
+print("    Open: https://localhost:8080  (login: admin / <password retrieved privately in runbook step 7.A>)")
 print()
 print("Next steps:")
 print("  3. python3 scripts/03_setup_external_secrets.py")

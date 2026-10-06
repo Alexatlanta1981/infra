@@ -247,21 +247,13 @@ run_cmd([
     "--wait", "--timeout", "10m",
 ])
 
-import base64
-argocd_password_b64, _ = run_cmd(
-    ["kubectl", "-n", "argocd", "get", "secret", "argocd-initial-admin-secret",
-     "-o", "jsonpath={.data.password}"],
-    capture=True,
-)
-argocd_password = base64.b64decode(argocd_password_b64).decode().strip()
-
 log("ArgoCD installed.")
 print()
 print("  ============================================================")
-print("  IMPORTANT: Save the ArgoCD credentials below")
+print("  ArgoCD access (credentials are not retrieved or printed)")
 print("  ============================================================")
 print("  Username : admin")
-print(f"  Password : {argocd_password}")
+print("  Retrieve the initial password privately using runbook step 7.A.")
 print()
 print("  To access the ArgoCD UI:")
 print("    kubectl port-forward svc/argocd-server -n argocd 8080:443")
@@ -315,7 +307,7 @@ log("All pre-requisites installed successfully.")
 print()
 print("  Summary:")
 print(f"    ALB controller   : installed in kube-system")
-print(f"    ArgoCD pass      : {argocd_password}")
+print("    ArgoCD           : installed in argocd")
 print()
 print("  ALB hostnames will appear in 'kubectl get ingress -n <env>'")
 print("  once ArgoCD has synced your applications.")
