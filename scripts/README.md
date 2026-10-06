@@ -20,6 +20,126 @@ Scripts 01-06 prompt for what they need, skip prompts already satisfied by the e
 
 Bucket creation, input values, confirmation, and the creation report are documented in [deployment runbook step 2](../docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites). Run script 00 there before Terraform bootstrap; run scripts 01-06 after Terraform creates the cluster.
 
+## Step 3: set up GitHub settings (start here after Terraform bootstrap)
+
+This script fills in the GitHub settings that let CI use your AWS infrastructure. It also sets your signed-in GitHub account as the reviewer for deployments. **It does not deploy the application or create AWS resources.**
+
+### 1. Get the approved script into your local folder
+
+After the script's PR is approved and merged into `main`, run:
+
+```bash
+cd ~/devops/chris/infra
+git status --short
+```
+
+If this prints changed or untracked files, stop and preserve them before switching branches. Do not delete files or discard changes to force the next commands to work. With a clean checkout:
+
+```bash
+cd ~/devops/chris/infra
+git switch main &&
+git pull --ff-only origin main &&
+ls scripts/00_setup_github_settings.sh
+```
+
+Expected final output:
+
+```text
+scripts/00_setup_github_settings.sh
+```
+
+If the file is missing, do not continue. Check that the PR was merged and that this is the correct repository checkout. Files in an isolated worktree do not automatically appear in your normal checkout.
+
+### 2. Enter your profile, GitHub owner, and existing bucket name
+
+First, list your configured AWS profiles:
+
+```bash
+aws configure list-profiles
+```
+
+Use the same profile you used for Terraform bootstrap. Replace the three example values below before running them:
+
+| Value | What to enter |
+|---|---|
+| `your-sso-profile` | Your local AWS CLI profile name from the list above. |
+| `your-github-owner` | The owner of all four repos, such as `Alexatlanta1981`. Do not enter a URL or `owner/infra`. |
+| `your-existing-state-bucket` | The exact bucket name you already created in step 2. Do not create another bucket. |
+
+```bash
+export AWS_PROFILE=your-sso-profile
+export AWS_REGION=us-east-1
+export GITHUB_ORG=your-github-owner
+export STATE_BUCKET=your-existing-state-bucket
+
+aws sso login --profile "$AWS_PROFILE" &&
+aws sts get-caller-identity --profile "$AWS_PROFILE" &&
+gh auth status
+```
+
+Check the AWS account ID and the GitHub login shown in the output. **The signed-in GitHub account becomes the deployment reviewer.** If it is the wrong account, correct your GitHub login before continuing.
+
+Keep this terminal open. These values are local terminal settings, not edits to the script.
+
+### 3. Check that Terraform bootstrap finished
+
+```bash
+cd ~/devops/chris/infra/envs/bootstrap
+terraform output
+```
+
+Expected output has both names below, with your actual AWS account and role ARNs:
+
+```text
+terraform_apply_role_arn = "arn:aws:iam::123456789012:role/mackllc-dev-terraform-apply-gha"
+terraform_plan_role_arn = "arn:aws:iam::123456789012:role/mackllc-dev-terraform-plan-gha"
+```
+
+These ARNs are examples. If either output is missing or Terraform reports an error, stop and finish [runbook step 2](../docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites). The settings script reads these outputs automatically; you do not paste them or JSON into its command.
+
+### 4. Run the script and answer its prompts
+
+```bash
+cd ~/devops/chris/infra/scripts
+./00_setup_github_settings.sh
+```
+
+**At the SSO admin role prompt:**
+
+- Enter the full IAM role ARN if you want this role granted EKS admin access. It must start with `arn:aws:iam::`, not `arn:aws:sts::`.
+- Press Enter to preserve the existing setting. If none exists, Enter skips this optional setting; it does not grant you cluster access.
+- To find the ARN, run this in another terminal using your actual profile name, then return to the prompt:
+
+```bash
+aws iam list-roles --profile your-sso-profile --query "Roles[?contains(RoleName,'AWSReservedSSO_')].Arn" --output json
+```
+
+If several roles appear, select the administrator role associated with your profile, not an arbitrary entry.
+
+**At `Apply these GitHub settings? [y/N]`:**
+
+Read the summary. Confirm the repository, reviewer, bucket, and role ARNs are correct. Type `y` and press Enter to apply. Type `n` or press Enter to cancel without changes.
+
+The script sets repository variables, generates the JWT secret only if it is absent, and protects the `dev` environment. It preserves an existing JWT secret. It stops if GitHub does not support the required protection or if existing additional reviewers would allow approval without you.
+
+### 5. Know when it is done
+
+The script prints the saved variables, secret names (not secret values), and environment protection settings. A successful run ends with:
+
+```text
+Setup complete. No workflows were dispatched, commits pushed, or PRs merged.
+```
+
+Only after that success message should you continue to [runbook step 4](../docs/DEPLOY-RUNBOOK.md#4-create-the-aws-infrastructure-terraform-via-git). If an error appears, stop. Some settings may already have changed; read the error and inspect them before retrying.
+
+| Problem | What to do |
+|---|---|
+| `No such file or directory` | Repeat section 1. From inside `infra/scripts`, use `./00_setup_github_settings.sh`, not `scripts/00_setup_github_settings.sh`. |
+| Expired SSO / `InvalidGrantException` | Run `aws sso login --profile "$AWS_PROFILE"` again in this terminal, verify the account, then retry. |
+| Missing Terraform outputs | Complete Terraform bootstrap in runbook step 2; do not invent role ARNs. |
+| Repository administration permission required | Sign in to GitHub with the correct account and confirm it has admin permission on `infra`. |
+| Unsupported `dev` protection or other existing reviewers | Review GitHub permissions, plan support, and the existing environment rules. Do not bypass required approval to continue. |
+
 ## Layout
 
 | Script | Purpose |
