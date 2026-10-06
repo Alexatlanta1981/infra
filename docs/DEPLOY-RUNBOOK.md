@@ -79,12 +79,11 @@ export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
 cd ~/devops/chris/infra
 ```
 
-1. **Create the state bucket in AWS.** Choose a globally unique name, for example `mackllc-terraform-state-123456789012`. Replace `<STATE_BUCKET>` in the commands with your chosen name (omit the angle brackets). Run the commands to create the bucket in your AWS account and enable versioning:
+1. **Create the state bucket in AWS.** Choose a globally unique name, for example `mackllc-terraform-state-123456789012`. Run the helper from the `infra` folder and enter that name when prompted:
    ```bash
-   aws s3api create-bucket --bucket <STATE_BUCKET> --region us-east-1 --profile "$AWS_PROFILE"
-   aws s3api put-bucket-versioning --bucket <STATE_BUCKET> --versioning-configuration Status=Enabled --profile "$AWS_PROFILE"
+   python3 scripts/00_create_state_bucket.py
    ```
-   **Keep this name.** Use the exact same bucket name in the Terraform command below and in GitHub in step 3.
+   The helper creates the bucket in your AWS account, enables versioning and encryption, blocks public access, enforces bucket-owner ownership, and prints the value to use for `TF_STATE_BUCKET`. **Keep that exact bucket name** for Terraform below and GitHub in step 3.
 2. **Create the GitHub CI login in AWS.** From your `infra` folder, generate the GitHub OIDC subjects:
    ```bash
    GITHUB_ORG=<ORG> scripts/00_oidc_subjects.sh

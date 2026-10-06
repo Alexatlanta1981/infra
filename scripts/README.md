@@ -1,6 +1,6 @@
 # SAAS - HENRY FORD (infra scripts)
 
-Six numbered Python scripts that take a bare EKS cluster (built by Terraform) to running services: install cluster add-ons, connect Argo CD to `gitops`, sync secrets, build images, deploy, verify.
+Six numbered Python scripts that take a bare EKS cluster (built by Terraform) to running services: install cluster add-ons, connect Argo CD to `gitops`, sync secrets, build images, deploy, verify. A separate one-time helper creates the Terraform state bucket before Terraform is initialized.
 
 Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops), [backend](https://github.com/Alexatlanta1981/backend), [frontend](https://github.com/Alexatlanta1981/frontend). Parent: [infra README](../README.md).
 
@@ -20,8 +20,9 @@ Each script prompts for what it needs, skips any prompt already set in the envir
 
 ## Layout
 
-| Script | Purpose |
+| File | Purpose |
 |---|---|
+| `00_create_state_bucket.py` | Creates the S3 Terraform state bucket in `us-east-1`, enables versioning and encryption, blocks public access, enforces bucket-owner ownership, and prints the value to enter as `TF_STATE_BUCKET` in GitHub. Run it before Terraform setup; rerunning safely reapplies these settings. |
 | `01_install_prerequisites.py` | Installs the ALB controller, Argo CD and External Secrets with Helm. Restarts the ALB controller so its webhook cert is fresh. |
 | `02_bootstrap_argocd.py` | Gives Argo CD access to `gitops`, creates the `mackllc` project and the root app for the chosen `ENV`. |
 | `03_setup_external_secrets.py` | Creates the ClusterSecretStore and ExternalSecrets from the RDS and Secrets Manager entries. |
@@ -30,6 +31,17 @@ Each script prompts for what it needs, skips any prompt already set in the envir
 | `06_verify_deployment.py` | Checks pods, services and ingress. |
 
 ## Running it
+
+Create the Terraform state bucket before running Terraform. Log in with your AWS SSO profile, then run this from the `infra` repository root and enter a globally unique bucket name when prompted:
+
+```bash
+aws sso login --profile your-sso-profile
+AWS_PROFILE=your-sso-profile python3 scripts/00_create_state_bucket.py
+```
+
+Copy the bucket name printed by the helper into the `TF_STATE_BUCKET` repository variable at `<ORG>/infra` → **Settings → Secrets and variables → Actions**. Terraform's S3 backend is configured for `us-east-1`.
+
+Then continue with cluster access and scripts 01-06:
 
 ```bash
 aws sso login --profile your-sso-profile
