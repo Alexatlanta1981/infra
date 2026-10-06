@@ -88,13 +88,13 @@ print("  Each pipeline: builds → scans → pushes image to ECR → updates git
 print()
 
 GITHUB_ORG     = prompt("GITHUB_ORG",        "GitHub username or org that owns the repos",
-                        "<your-org>", "mackllc")
+                        "<your-org>", "Alexatlanta1981")
 FRONTEND_REPO  = prompt("FRONTEND_REPO",    "GitHub repo name for frontend",
                         "frontend", "frontend")
 BACKEND_REPO   = prompt("BACKEND_REPO",     "GitHub repo name for backend",
                         "backend", "backend")
 BRANCH         = prompt("BRANCH",           "Branch to build",
-                        "develop", "develop")
+                        "main", "main")
 
 # Update service catalogue with user-provided repo names
 FRONTEND = [

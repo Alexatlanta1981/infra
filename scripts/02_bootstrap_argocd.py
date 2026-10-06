@@ -148,6 +148,8 @@ GITOPS_REPO_URL = prompt("GITOPS_REPO_URL", "GitOps repository HTTPS URL",
 
 GITHUB_APP_ID = prompt("GITHUB_APP_ID", "GitHub App ID (read-only Contents on gitops)", "123456", "")
 GITHUB_APP_INSTALLATION_ID = prompt("GITHUB_APP_INSTALLATION_ID", "GitHub App installation ID", "12345678", "")
+if GITHUB_APP_INSTALLATION_ID.strip() == GITHUB_APP_ID.strip():
+    die("Installation ID equals the App ID. Get the installation ID from Install App > gear icon (number at the end of the URL).")
 GITHUB_APP_KEY_PATH = prompt("GITHUB_APP_KEY_PATH", "Path to the GitHub App private key (.pem)", "~/app.pem", "")
 with open(os.path.expanduser(GITHUB_APP_KEY_PATH)) as _f:
     GITHUB_APP_KEY = _f.read()
