@@ -302,6 +302,6 @@ Delete the GitHub App (Settings > Developer settings > GitHub Apps) if the platf
 
 1. `GITHUB_ORG=<your-org> scripts/00_oidc_subjects.sh` prints JSON. Save it as repo variable `GH_REPO_SUBJECTS` (Settings > Variables) on `infra`.
 2. Set repo variable `SSO_ADMIN_ROLE_ARN` (or leave empty).
-3. Edit `bucket` in `envs/*/backend.tf` to your own state bucket.
-4. Replace `@YOUR-GITHUB-USER-OR-TEAM` in each repo's `.github/CODEOWNERS`.
-5. gitops repo: replace account ID and `repoURL` org in `envs/dev/values-*.yaml` and `argocd/` (separate gitops PR pending).
+3. Set repo variable `TF_STATE_BUCKET` to your own S3 state bucket (workflows pass it to `terraform init`). Local runs: `terraform init -backend-config="bucket=<your-bucket>"`.
+4. Replace `@YOUR-GITHUB-USER-OR-TEAM` in each repo's `.github/CODEOWNERS` with your handle.
+5. Nothing to edit in gitops: `<ACCOUNT_ID>` and `your-github-username` are filled in automatically by scripts 02 and 05 (account ID comes from `aws sts get-caller-identity`, so make sure `AWS_PROFILE` points at your account).
