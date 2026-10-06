@@ -16,12 +16,28 @@ Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops), [backend](
                    Argo CD sync)            wait for images)
 ```
 
-Each script prompts for what it needs, skips any prompt already set in the environment, and can be re-run safely.
+Scripts 01-06 prompt for what they need, skip prompts already satisfied by the environment, and can be re-run safely. Script 00 is a one-time AWS bootstrap step and is not intended to be re-run after bucket creation.
+
+## Create the Terraform state bucket
+
+Run this once from the `infra` repository root, after configuring and signing in to your AWS SSO profile:
+
+```bash
+aws sso login --profile <AWS_PROFILE>
+export AWS_PROFILE=<AWS_PROFILE>
+export AWS_REGION=us-east-1
+scripts/00_create_state_bucket.sh <STATE_BUCKET>
+```
+
+Replace `<AWS_PROFILE>` with your local AWS CLI profile name. Replace `<STATE_BUCKET>` with a globally unique S3 bucket name, for example `mackllc-terraform-state-123456789012`; do not type the angle brackets. The bucket name is the only value you provide as a command argument. The script shows the active AWS account, region, and bucket name, then prompts `Create this bucket and enable versioning? [y/N]`. Check that information and type `y` to proceed, or any other answer to cancel. On success, it prints the AWS create-bucket response and the verified versioning status.
+
+Keep the exact bucket name: Terraform initialization and the `TF_STATE_BUCKET` GitHub repository variable must use the same name. The script creates a new bucket; do not run it again for a bucket that already exists.
 
 ## Layout
 
 | Script | Purpose |
 |---|---|
+| `00_create_state_bucket.sh` | Creates the Terraform state S3 bucket and enables versioning. Run once during AWS bootstrap; uses the active AWS CLI credentials and `AWS_REGION` (default `us-east-1`). |
 | `01_install_prerequisites.py` | Installs the ALB controller, Argo CD and External Secrets with Helm. Restarts the ALB controller so its webhook cert is fresh. |
 | `02_bootstrap_argocd.py` | Gives Argo CD access to `gitops`, creates the `mackllc` project and the root app for the chosen `ENV`. |
 | `03_setup_external_secrets.py` | Creates the ClusterSecretStore and ExternalSecrets from the RDS and Secrets Manager entries. |
