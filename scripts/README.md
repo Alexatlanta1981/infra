@@ -16,28 +16,16 @@ Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops), [backend](
                    Argo CD sync)            wait for images)
 ```
 
-Scripts 01-06 prompt for what they need, skip prompts already satisfied by the environment, and can be re-run safely. Script 00 is a one-time AWS bootstrap step and is not intended to be re-run after bucket creation.
+Scripts 01-06 prompt for what they need, skip prompts already satisfied by the environment, and can be re-run safely. `00_create_state_bucket.sh` is a one-time AWS bootstrap step and is not intended to be re-run after bucket creation. `00_setup_github_settings.sh` runs after Terraform bootstrap and can be re-run to verify or update GitHub settings without rotating an existing JWT secret.
 
-## Create the Terraform state bucket
-
-Run this once from the `infra` repository root, after configuring and signing in to your AWS SSO profile:
-
-```bash
-aws sso login --profile <AWS_PROFILE>
-export AWS_PROFILE=<AWS_PROFILE>
-export AWS_REGION=us-east-1
-scripts/00_create_state_bucket.sh <STATE_BUCKET>
-```
-
-Replace `<AWS_PROFILE>` with your local AWS CLI profile name. Replace `<STATE_BUCKET>` with a globally unique S3 bucket name, for example `mackllc-terraform-state-123456789012`; do not type the angle brackets. The bucket name is the only value you provide as a command argument. The script shows the active AWS account, region, and bucket name, then prompts `Create this bucket and enable versioning? [y/N]`. Check that information and type `y` to proceed, or any other answer to cancel. On success, it prints the AWS create-bucket response and the verified versioning status.
-
-Keep the exact bucket name: Terraform initialization and the `TF_STATE_BUCKET` GitHub repository variable must use the same name. The script creates a new bucket; do not run it again for a bucket that already exists.
+Bucket creation, input values, confirmation, and the creation report are documented in [deployment runbook step 2](../docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites). Run script 00 there before Terraform bootstrap; run scripts 01-06 after Terraform creates the cluster.
 
 ## Layout
 
 | Script | Purpose |
 |---|---|
 | `00_create_state_bucket.sh` | Creates the Terraform state S3 bucket and enables versioning. Run once during AWS bootstrap; uses the active AWS CLI credentials and `AWS_REGION` (default `us-east-1`). |
+| `00_setup_github_settings.sh` | Configures infra repository variables, creates a JWT secret only if absent, and requires your review in the `dev` environment. See [runbook step 3](../docs/DEPLOY-RUNBOOK.md#3-github-settings-for-infra) for inputs and verification. |
 | `01_install_prerequisites.py` | Installs the ALB controller, Argo CD and External Secrets with Helm. Restarts the ALB controller so its webhook cert is fresh. |
 | `02_bootstrap_argocd.py` | Gives Argo CD access to `gitops`, creates the `mackllc` project and the root app for the chosen `ENV`. |
 | `03_setup_external_secrets.py` | Creates the ClusterSecretStore and ExternalSecrets from the RDS and Secrets Manager entries. |
@@ -52,15 +40,17 @@ aws sso login --profile your-sso-profile
 export AWS_PROFILE=your-sso-profile
 aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1
 export GITOPS_PATH=~/devops/chris/gitops     # local clone of gitops
-cd scripts
+cd ~/devops/chris/infra/scripts
 python3 01_install_prerequisites.py          # then 02 ... 06 in order
 ```
 
 Build and deploy with presets (replace the `<...>` values; see the runbook, step 8):
 
 ```bash
+cd ~/devops/chris/infra/scripts
 GITHUB_ORG=<GITHUB_ORG> FRONTEND_REPO=<FRONTEND_REPO> BACKEND_REPO=<BACKEND_REPO> BRANCH=<BRANCH> \
   AWS_PROFILE=<AWS_SSO_PROFILE> python3 04_run_pipeline.py
+cd ~/devops/chris/infra/scripts
 AWS_PROFILE=<AWS_SSO_PROFILE> python3 05_deploy_services.py
 ```
 
@@ -127,6 +117,7 @@ kubectl describe application <APP>-dev -n argocd | grep -i -A3 "error\|401"   # 
 # Endpoints
 curl -s -o /dev/null -w '%{http_code}\n' http://<ALB_HOSTNAME>/        # 200
 curl -s -o /dev/null -w '%{http_code}\n' http://<ALB_HOSTNAME>/api/    # 200/401/403/404, not 502/503
+cd ~/devops/chris/infra/scripts
 echo 1 | python3 06_verify_deployment.py
 ```
 
@@ -149,6 +140,7 @@ Script changes go through a pull request to **`main`**. CI tests them automatica
 | Required check | What it does |
 |---|---|
 | `static` | `py_compile` plus `ruff` (syntax, undefined names, unused code) on `scripts/*.py` |
+| `static` (shell checks) | Bash syntax checks and mocked GitHub settings setup tests; no real AWS or GitHub changes |
 | `bootstrap smoke (01-03, kind)` | Spins up a throwaway `kind` cluster, runs scripts 01–03 with dummy AWS values, and asserts Argo CD, External Secrets, the `dev` namespace, the repo secret, the `mackllc` AppProject, the ClusterSecretStore and ExternalSecrets exist |
 | `app layer (04-06, kind)` | Fresh `kind` cluster plus the real `gitops` repo; runs 01–06 with a fake `gh` CLI so no real builds start |
 
