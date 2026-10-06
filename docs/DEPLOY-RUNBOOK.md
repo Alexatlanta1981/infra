@@ -10,7 +10,7 @@ Each numbered step has lettered substeps. Follow them in order: `1.A`, then `1.B
 
 **Reading commands and output:** copy only the `bash` command blocks, not the example output blocks or your terminal prompt (`chris@...$`). Replace placeholders before running commands; never type the angle brackets. All outputs below are illustrative, not results from your account. IDs, ARNs, versions, timestamps, pod names, and resource counts will differ. A command returning successfully is not enough: check the expected values. Stop on an error rather than proceeding to the next step.
 
-Use the same terminal throughout bootstrap so `AWS_PROFILE`, `AWS_REGION`, `STATE_BUCKET`, `GITHUB_ORG`, and `SUBJECTS_JSON` remain set. In a new terminal, set them again. Every script command below has its working directory above it. If your clones are elsewhere, replace `~/devops/chris` with your actual clone location.
+Use the same terminal throughout bootstrap so `AWS_PROFILE`, `AWS_REGION`, `STATE_BUCKET`, `GITHUB_ORG`, and `SUBJECTS_JSON` remain set. In a new terminal, set them again. Every script command below has its working directory above it. If your clones are elsewhere, replace `~/devops` with your actual clone location.
 
 **Change policy:** Human changes to the repos go through pull requests; push only a working branch to open the PR, never a human commit directly to `main`. Merge only after review and required CI checks pass. Terraform changes are applied by GitHub Actions after merge, with approval in the `dev` environment. CI's automated image-tag update to `gitops` is described in step 8.
 
@@ -102,16 +102,18 @@ If a command says `command not found`, install that tool before continuing. Terr
 
 ### 1.A Clone into your working directory
 
-In an Ubuntu/WSL terminal, replace `<ORG>` with the GitHub username or organization that owns the four repositories. This creates four local folders under `~/devops/chris`.
+For an independent demo, first fork or copy all four repositories into your own GitHub owner, keeping their names. Clone your copies below, not the original author's repositories. You need repository administration permission to configure Actions and deployment approval. Use your own AWS account and SSO assignment; neither credentials nor account access are included with the source code.
+
+In an Ubuntu/WSL terminal, replace `<ORG>` with the GitHub username or organization that owns the four repositories. This creates four local folders under `~/devops`.
 
 ```bash
-mkdir -p ~/devops/chris && cd ~/devops/chris
+mkdir -p ~/devops && cd ~/devops
 for r in infra backend frontend gitops; do git clone https://github.com/<ORG>/$r.git; done
 ```
 
 ### 1.B Check the local repositories
 
-**Verify:** `ls ~/devops/chris` lists `infra backend frontend gitops`.
+**Verify:** `ls ~/devops` lists `infra backend frontend gitops`.
 
 Example output (other folders may also be present):
 
@@ -125,21 +127,47 @@ If you already cloned the repos, do not clone over them. Ensure your local check
 
 ### 2.A Select your AWS profile and working directory
 
-Run these commands in your workstation's Ubuntu/WSL terminal from `~/devops/chris/infra`. They use the AWS profile from step 0 to create the state bucket, GitHub OIDC provider, and CI roles in your AWS account. The profile name stays local; it is not a Terraform variable or GitHub setting.
+Run these commands in your workstation's Ubuntu/WSL terminal from `~/devops/infra`. They use the AWS profile from step 0 to create the state bucket, GitHub OIDC provider, and CI roles in your AWS account. The profile name stays local; it is not a Terraform variable or GitHub setting.
 
 If you opened a new terminal, set the profile again before running these commands:
 
 ```bash
 export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
-cd ~/devops/chris/infra
+cd ~/devops/infra
 ```
 
-### 2.B Create and verify the state bucket
+### 2.B Select the existing state bucket, or create one for a fresh setup
+
+**Existing deployment: do not create another bucket.** First read the bucket already configured for CI:
+
+```bash
+cd ~/devops/infra
+export GITHUB_ORG=your-github-owner
+STATE_BUCKET=$(gh variable get TF_STATE_BUCKET --repo "$GITHUB_ORG/infra") &&
+export STATE_BUCKET &&
+printf 'Existing state bucket: %s\n' "$STATE_BUCKET"
+```
+
+If the variable is missing, empty, or points to an unexpected bucket, stop and inspect the existing deployment and backend before creating anything. Missing local Terraform outputs do not prove that AWS resources or remote state are missing.
+
+Use your own deployment's bucket in `us-east-1`. Keep both `envs/bootstrap/terraform.tfstate` and `envs/dev/terraform.tfstate` there. A new empty bucket hides the existing state from Terraform; it does not move state or make existing IAM resources new.
+
+Verify the selected bucket and state objects without displaying state contents:
+
+```bash
+aws s3api get-bucket-versioning --bucket "${STATE_BUCKET:?Set STATE_BUCKET}" &&
+aws s3api head-object --bucket "$STATE_BUCKET" --key envs/bootstrap/terraform.tfstate &&
+aws s3api head-object --bucket "$STATE_BUCKET" --key envs/dev/terraform.tfstate
+```
+
+Expect versioning `Enabled` and metadata for both state objects. Stop on an error. Skip bucket creation and follow step 2.C, then the existing-deployment instructions in step 2.D.
+
+**Fresh setup only:** use the creation script below after confirming there is no existing state or deployment to preserve.
 
 Run this once, before Terraform bootstrap and before scripts 01-06. Choose a globally unique S3 bucket name using lowercase letters, numbers, and hyphens, for example `mackllc-terraform-state-123456789012`. Set `STATE_BUCKET` to your chosen name, without angle brackets:
    ```bash
    export STATE_BUCKET=your-unique-lowercase-state-bucket
-   cd ~/devops/chris/infra/scripts
+   cd ~/devops/infra/scripts
    ./00_create_state_bucket.sh "$STATE_BUCKET"
    ```
    The bucket name is the script's only command argument. It uses the local `AWS_PROFILE` and `AWS_REGION` set above; this runbook's Terraform backends use `us-east-1`.
@@ -176,7 +204,7 @@ Run this once, before Terraform bootstrap and before scripts 01-06. Choose a glo
 Replace `your-github-owner` below with the owner of all four repositories (for example, `Alexatlanta1981`). The script asks GitHub for the owner and repository IDs. Capture its entire JSON output automatically so no braces or quotes are lost:
    ```bash
    export GITHUB_ORG=your-github-owner
-   cd ~/devops/chris/infra/scripts
+   cd ~/devops/infra/scripts
    SUBJECTS_JSON=$(./00_oidc_subjects.sh) &&
    printf '%s\n' "$SUBJECTS_JSON"
    ```
@@ -191,9 +219,22 @@ Replace `your-github-owner` below with the owner of all four repositories (for e
 
 ### 2.D Initialize and apply Terraform bootstrap
 
+**Existing deployment: verify, do not repeat the first-time apply.** Use the bucket identified in step 2.B and the subjects generated in step 2.C:
+
+```bash
+cd ~/devops/infra/envs/bootstrap
+terraform init -backend-config="bucket=${STATE_BUCKET:?Set STATE_BUCKET}" &&
+terraform output &&
+terraform plan -var="github_repo_subject_prefixes=${SUBJECTS_JSON:?Generate SUBJECTS_JSON in step 2}"
+```
+
+Expect both role ARNs and, for an unchanged bootstrap, `No changes. Your infrastructure matches the configuration.` If initialization reports a backend change, follow the recovery guidance below first. If the plan unexpectedly proposes creating or importing existing IAM roles or the OIDC provider, stop and check the selected state bucket. Do not approve that plan. Once the existing outputs are verified, continue to step 3; subsequent changes go through a PR and CI.
+
+**Fresh setup only:** the following local apply is needed only before CI roles exist.
+
 Run from `envs/bootstrap`, not the repository root and not `scripts`. The root `infra` folder has no Terraform configuration. Before applying, display the working directory and saved inputs:
    ```bash
-   cd ~/devops/chris/infra/envs/bootstrap
+   cd ~/devops/infra/envs/bootstrap
    pwd
    ls *.tf
    printf 'Bucket: %s\nSubjects: %s\n' "$STATE_BUCKET" "$SUBJECTS_JSON"
@@ -202,7 +243,7 @@ Run from `envs/bootstrap`, not the repository root and not `scripts`. The root `
    Example directory and file output:
 
    ```text
-   /home/chris/devops/chris/infra/envs/bootstrap
+   /home/your-user/devops/infra/envs/bootstrap
    backend.tf  main.tf  outputs.tf  providers.tf  variables.tf
    Bucket: your-unique-lowercase-state-bucket
    Subjects: {"infra":...,"backend":...,"frontend":...,"gitops":...}
@@ -212,7 +253,7 @@ Run from `envs/bootstrap`, not the repository root and not `scripts`. The root `
 
    Run this once locally with your SSO admin profile, not from CI. Shell double quotes expand the variables; you do not need to paste JSON into the command:
    ```bash
-   cd ~/devops/chris/infra/envs/bootstrap
+   cd ~/devops/infra/envs/bootstrap
    terraform init -backend-config="bucket=${STATE_BUCKET:?Set STATE_BUCKET to your bucket name}" &&
    terraform apply -var="github_repo_subject_prefixes=${SUBJECTS_JSON:?Generate SUBJECTS_JSON in step 2}"
    ```
@@ -224,7 +265,7 @@ Run from `envs/bootstrap`, not the repository root and not `scripts`. The root `
    Terraform has been successfully initialized!
    ```
 
-   Terraform then displays a plan and asks `Enter a value:`. Review the account, planned resources, imports, and any changes before typing `yes`; do not approve unexpected deletions. The current bootstrap configuration includes imports for previously created CI roles. If Terraform says an import target does not exist, stop: this configuration needs a reviewed fresh-account adjustment, not repeated apply attempts.
+   Terraform then displays a plan and asks `Enter a value:`. Review the account, planned resources, and any changes before typing `yes`; do not approve unexpected deletions. A fresh account creates the OIDC provider and CI roles; there are no automatic imports from another deployment. If these resources already exist, find their owning state first. Do not create duplicate ownership. After verifying ownership and backing up state, use explicit `terraform import` commands only for resources that are not managed elsewhere, through a reviewed adoption procedure. An existing GitHub OIDC provider must also be adopted rather than recreated.
 
    A successful apply prints `Apply complete!` followed by outputs such as:
 
@@ -239,17 +280,26 @@ Run from `envs/bootstrap`, not the repository root and not `scripts`. The root `
 
 ### If bootstrap stops with an error
 
-**`Terraform initialized in an empty directory!` or `No configuration files`:** you ran Terraform in the wrong folder. No resources were changed by that failed apply. Change to `~/devops/chris/infra/envs/bootstrap`, check `ls *.tf`, then rerun initialization and apply above. Do not use `terraform destroy` to fix this error.
+**`Terraform initialized in an empty directory!` or `No configuration files`:** you ran Terraform in the wrong folder. No resources were changed by that failed apply. Change to `~/devops/infra/envs/bootstrap`, check `ls *.tf`, then rerun initialization and apply above. Do not use `terraform destroy` to fix this error.
 
 **`Backend configuration changed`:** first determine whether this configuration already has state managing AWS resources in a different bucket or local state. Do not discard or overwrite existing state.
 
 - If this is your first bootstrap apply and there is no existing managed state to preserve, use the following command, then retry apply:
   ```bash
-  cd ~/devops/chris/infra/envs/bootstrap
+  cd ~/devops/infra/envs/bootstrap
   terraform init -reconfigure -backend-config="bucket=${STATE_BUCKET:?Set STATE_BUCKET}"
   ```
 - If resources were already managed using the old backend, stop and review both state locations. Back up existing state and use `terraform init -migrate-state` only when intentionally moving that state. `-reconfigure` does not migrate it.
+- If the local backend accidentally points at a new empty bucket, but the original remote state is verified and backed up, reconnect to the original bucket without migrating:
+  ```bash
+  cd ~/devops/infra/envs/bootstrap
+  terraform init -reconfigure -backend-config="bucket=${STATE_BUCKET:?Set STATE_BUCKET to the verified original bucket}" &&
+  terraform output
+  ```
+  Check the dev backend separately from `~/devops/infra/envs/dev` using the same verified bucket. Keep the two roots' distinct state keys. Ensure GitHub's `TF_STATE_BUCKET` also uses that bucket. Re-set `STATE_BUCKET` in any terminal that still has the wrong value.
 - If you are unsure, stop and establish where the existing state is before choosing either option.
+
+Before any intentional migration or bucket deletion, make a private backup outside the repository of current state, historical object versions, and delete-marker metadata. Check the downloaded files' checksums and keep a manifest mapping keys and version IDs to backup files. State can contain secrets: never commit it or attach it to a PR. Versioned buckets can retain old versions and delete markers even when an object listing looks empty; do not force-delete them to fix missing Terraform outputs.
 
 **`No valid credential sources found`, `InvalidGrantException`, or cached SSO token refresh failed:** sign in again and verify the account before retrying initialization. Replace the profile example with your configured profile:
 
@@ -268,7 +318,7 @@ The identity output should show your intended AWS account as in step 0. Login do
 ```bash
 aws s3api get-bucket-versioning --bucket "${STATE_BUCKET:?Set STATE_BUCKET}" --profile "$AWS_PROFILE" --output json
 aws iam list-open-id-connect-providers --profile "$AWS_PROFILE" --output json
-cd ~/devops/chris/infra/envs/bootstrap
+cd ~/devops/infra/envs/bootstrap
 terraform output
 ```
 
@@ -293,7 +343,7 @@ Run the GitHub settings script after Terraform bootstrap has succeeded. It requi
 Use the owner and bucket already set in step 2:
 
 ```bash
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 ./00_setup_github_settings.sh
 ```
 
@@ -361,6 +411,16 @@ gh api "repos/$GITHUB_ORG/infra/environments/dev" --jq '{name, can_admins_bypass
 
 Expect five required variables, plus `SSO_ADMIN_ROLE_ARN` if provided or already present, and the `DEV_JWT_SECRET` secret name. Terraform apply pauses for approval in the configured `dev` environment.
 
+**Verify OIDC subjects on your own repositories before CI.** The Terraform trust policies use the immutable owner/repository ID prefixes generated in step 2.C, not another owner's repository names or IDs. Read each repository's configuration:
+
+```bash
+for repo in infra backend frontend gitops; do
+  gh api "repos/$GITHUB_ORG/$repo/actions/oidc/customization/sub" || break
+done
+```
+
+For the default immutable subject format, expect `use_default: true`, `use_immutable_subject: true`, and a `sub_claim_prefix` matching that repository's entry in `SUBJECTS_JSON`. If the repository uses a different format, or the API call fails, stop and resolve the repository OIDC configuration with its administrator before running CI. Do not change STS, replace OIDC with static credentials, or broaden IAM trust to unrelated repositories to work around a mismatch. The settings script generates the prefixes but does not alter GitHub's OIDC subject configuration.
+
 Example output excerpts (timestamps omitted here; secret values are never printed):
 
 ```text
@@ -387,7 +447,7 @@ The JSON above is abbreviated; the actual GitHub value must be the complete `SUB
 Make infrastructure code changes in your local `infra` clone on a working branch. Push that branch and open a PR; never push directly to `main`. GitHub Actions runs the Terraform plan and CI checks. Review the plan and wait for review and required checks to pass, then merge the PR. After merge, start the apply workflow and approve it in the `dev` environment. The apply creates the VPC, EKS, RDS, ECR, IAM/IRSA roles, and secrets in AWS. Do not run Terraform apply from your workstation.
 
 ```bash
-cd ~/devops/chris/infra
+cd ~/devops/infra
 git checkout -b my-change
 # edit files
 git add -A && git commit -m "describe change"
@@ -509,20 +569,20 @@ The first value must be your writer App ID; the second command lists only the se
 
 ## 7. Install cluster components (scripts, in order)
 
-After step 5 reports EKS nodes as `Ready`, open an Ubuntu/WSL terminal and run these scripts from `~/devops/chris/infra/scripts` in order. They install the AWS Load Balancer Controller, Argo CD, External Secrets Operator, connect Argo CD to `gitops`, and configure the cluster secret store.
+After step 5 reports EKS nodes as `Ready`, open an Ubuntu/WSL terminal and run these scripts from `~/devops/infra/scripts` in order. They install the AWS Load Balancer Controller, Argo CD, External Secrets Operator, connect Argo CD to `gitops`, and configure the cluster secret store.
 
 ### 7.A Install cluster prerequisites (script 01)
 
 ```bash
-export GITOPS_PATH=~/devops/chris/gitops
-cd ~/devops/chris/infra/scripts
+export GITOPS_PATH=~/devops/gitops
+cd ~/devops/infra/scripts
 python3 01_install_prerequisites.py     # ALB controller, Argo CD, External Secrets Operator
 ```
 
 ### 7.B Connect Argo CD to gitops (script 02)
 
 ```bash
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 python3 02_bootstrap_argocd.py          # registers gitops repo (asks App ID, installation ID, key path)
 ```
 
@@ -546,7 +606,7 @@ kubectl annotate applications -n argocd --all argocd.argoproj.io/refresh=hard --
 ### 7.C Configure External Secrets (script 03)
 
 ```bash
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 python3 03_setup_external_secrets.py
 ```
 
@@ -590,10 +650,10 @@ Column layouts depend on the installed version. All expected pods must be ready,
 
 ### 8.A Set build inputs and run script 04
 
-In an Ubuntu/WSL terminal, run script 04 from `~/devops/chris/infra/scripts`. It triggers GitHub Actions in `backend` and `frontend`; the image builds run in those repositories, not on your workstation. Replace each placeholder with your value:
+In an Ubuntu/WSL terminal, run script 04 from `~/devops/infra/scripts`. It triggers GitHub Actions in `backend` and `frontend`; the image builds run in those repositories, not on your workstation. Replace each placeholder with your value:
 
 ```bash
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 GITHUB_ORG=<GITHUB_ORG> FRONTEND_REPO=<FRONTEND_REPO> BACKEND_REPO=<BACKEND_REPO> BRANCH=<BRANCH> \
   AWS_PROFILE=<AWS_SSO_PROFILE> python3 04_run_pipeline.py
 ```
@@ -622,7 +682,7 @@ ECR tags are immutable: re-running the same commit fails to push. Make a new com
 
 ### 8.B Verify builds and image tags
 
-**Verify:** `gh run list -R <ORG>/backend --limit 8` all `success`; `aws ecr describe-images --repository-name <repo> --query 'imageDetails[].imageTags'` shows a `sha-xxxxxxx` tag; `git -C ~/devops/chris/gitops pull` shows new tag commits.
+**Verify:** `gh run list -R <ORG>/backend --limit 8` all `success`; `aws ecr describe-images --repository-name <repo> --query 'imageDetails[].imageTags'` shows a `sha-xxxxxxx` tag; `git -C ~/devops/gitops pull` shows new tag commits.
 
 Example ECR output with `--output json`:
 
@@ -643,18 +703,18 @@ The actual tag must match the commit you built. A pull that says `Already up to 
 
 ### 9.A Deploy services (script 05)
 
-After step 8 succeeds, run script 05 from `~/devops/chris/infra/scripts` in your Ubuntu/WSL terminal. Replace `<ORG>` with the GitHub owner and `<AWS_SSO_PROFILE>` with the local profile name from step 0. These are command-line values; do not add them to GitHub settings. Script 05 creates the Argo CD applications in namespace `dev`.
+After step 8 succeeds, run script 05 from `~/devops/infra/scripts` in your Ubuntu/WSL terminal. Replace `<ORG>` with the GitHub owner and `<AWS_SSO_PROFILE>` with the local profile name from step 0. These are command-line values; do not add them to GitHub settings. Script 05 creates the Argo CD applications in namespace `dev`.
 
 ```bash
 export GITHUB_USERNAME=<ORG> ENV=dev
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 AWS_PROFILE=<AWS_SSO_PROFILE> python3 05_deploy_services.py   # creates the Argo CD apps
 ```
 
 ### 9.B Run deployment verification (script 06)
 
 ```bash
-cd ~/devops/chris/infra/scripts
+cd ~/devops/infra/scripts
 echo 1 | python3 06_verify_deployment.py
 ```
 
@@ -712,7 +772,7 @@ These are separate responses for `/` and `/api/`. `401` means authentication is 
 Create and push a working branch from your local `backend` clone, then open a PR in GitHub. Wait for review and required CI checks to pass before merging; never push directly to `main`. After merge, trigger the service workflow if it did not start automatically. CI builds the image and updates its tag in `gitops`.
 
 ```bash
-cd ~/devops/chris/backend
+cd ~/devops/backend
 git checkout -b feat/my-change
 git add -A && git commit -m "feat: ..."
 git push -u origin feat/my-change
@@ -862,7 +922,7 @@ Delete the GitHub App (Settings > Developer settings > GitHub Apps) if the platf
 |---|---|
 | Script says `No such file or directory` | Run the `cd` above that script. Inside `infra/scripts`, use `./00_create_state_bucket.sh`, not `scripts/00_create_state_bucket.sh`. Verify the approved script exists in this checkout. |
 | Bucket name rejected | Use a valid globally unique lowercase S3 name; capital letters are not allowed. |
-| Terraform says empty directory / no configuration files | Use `cd ~/devops/chris/infra/envs/bootstrap`; see step 2. Do not destroy anything. |
+| Terraform says empty directory / no configuration files | Use `cd ~/devops/infra/envs/bootstrap`; see step 2. Do not destroy anything. |
 | Backend configuration changed | Determine whether state already exists before choosing reconfiguration or migration; see step 2. |
 | No valid credentials / SSO `InvalidGrantException` | Refresh the selected SSO profile and verify the account; see step 2. |
 | JSON parse error or missing `infra` entry | Regenerate the complete `SUBJECTS_JSON` as in step 2; do not manually paste a partial object. |

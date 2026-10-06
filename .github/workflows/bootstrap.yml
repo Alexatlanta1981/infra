@@ -51,6 +51,8 @@ jobs:
       - run: terraform fmt -check -recursive
       - run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
       - run: terraform validate -no-color
+      - name: Test fresh-account bootstrap without AWS calls
+        run: terraform test -no-color
       - run: terraform plan -no-color
 
   apply:
