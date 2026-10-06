@@ -6,6 +6,10 @@ Repos: `infra`, `backend`, `frontend`, `gitops`, all under `<ORG>`.
 
 **How to use this:** follow the steps in order. Each step tells you where to go, what to create, and where to enter the result. Complete the **Verify** check before continuing.
 
+**Reading commands and output:** copy only the `bash` command blocks, not the example output blocks or your terminal prompt (`chris@...$`). Replace placeholders before running commands; never type the angle brackets. All outputs below are illustrative, not results from your account. IDs, ARNs, versions, timestamps, pod names, and resource counts will differ. A command returning successfully is not enough: check the expected values. Stop on an error rather than proceeding to the next step.
+
+Use the same terminal throughout bootstrap so `AWS_PROFILE`, `AWS_REGION`, `STATE_BUCKET`, `GITHUB_ORG`, and `SUBJECTS_JSON` remain set. In a new terminal, set them again. Every script command below has its working directory above it. If your clones are elsewhere, replace `~/devops/chris` with your actual clone location.
+
 **Change policy:** Human changes to the repos go through pull requests; push only a working branch to open the PR, never a human commit directly to `main`. Merge only after review and required CI checks pass. Terraform changes are applied by GitHub Actions after merge, with approval in the `dev` environment. CI's automated image-tag update to `gitops` is described in step 8.
 
 | Step | What you do | Time |
@@ -41,7 +45,7 @@ Account setup, SSO and billing are out of scope here.
 
 ## 0. Workstation tools (once)
 
-In an Ubuntu/WSL terminal, install `git`, `gh`, AWS CLI v2, Terraform >= 1.11, `kubectl`, `helm`, `yq`, and Python >= 3.10.
+In an Ubuntu/WSL terminal, install `git`, `gh`, AWS CLI v2, Terraform >= 1.11, `kubectl`, `helm`, `yq`, `openssl`, and Python >= 3.10.
 
 Choose a local AWS profile name, for example `mackllc-admin`. Replace `mackllc-admin` below and anywhere else it appears with your chosen name. When `aws configure sso` prompts you, enter your IAM Identity Center start URL, SSO region, AWS account, and permission set. The profile is saved on your workstation in `~/.aws/config`; do not enter it in GitHub.
 
@@ -53,9 +57,38 @@ export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
 aws sts get-caller-identity        # must show <ACCOUNT_ID>
 ```
 
+Example identity output (use your actual account, not this sample):
+
+```text
+{
+    "UserId": "AROAXXXXXXXXXXXXXXXX:your-user",
+    "Account": "123456789012",
+    "Arn": "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_AdministratorAccess_example/your-user"
+}
+```
+
+Confirm `Account` is the intended AWS account. If login or identity verification fails, do not continue.
+
 Keep using this terminal so `AWS_PROFILE` remains set. In a new terminal, run `export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1` again. AWS CLI and Terraform use this local profile.
 
 **Verify:** `git --version && gh --version && aws --version && terraform version && kubectl version --client && helm version --short && yq --version && python3 --version` all print versions. `gh auth status` says logged in.
+
+Example output excerpts (versions and formatting vary):
+
+```text
+git version 2.x.x
+gh version 2.x.x
+aws-cli/2.x.x ...
+Terraform v1.11.x
+Client Version: v1.x.x
+v3.x.x+...
+yq ... version ...
+Python 3.12.x
+github.com
+  ✓ Logged in to github.com account your-user
+```
+
+If a command says `command not found`, install that tool before continuing. Terraform must be at least 1.11 and AWS CLI must be v2.
 
 ## 1. Clone the four repos
 
@@ -68,6 +101,14 @@ for r in infra backend frontend gitops; do git clone https://github.com/<ORG>/$r
 
 **Verify:** `ls ~/devops/chris` lists `infra backend frontend gitops`.
 
+Example output (other folders may also be present):
+
+```text
+backend  frontend  gitops  infra
+```
+
+If you already cloned the repos, do not clone over them. Ensure your local checkout contains the approved script changes before step 2; a script in another branch or isolated worktree is not automatically available in this clone.
+
 ## 2. One-time AWS prerequisites
 
 Run these commands in your workstation's Ubuntu/WSL terminal from `~/devops/chris/infra`. They use the AWS profile from step 0 to create the state bucket, GitHub OIDC provider, and CI roles in your AWS account. The profile name stays local; it is not a Terraform variable or GitHub setting.
@@ -79,10 +120,11 @@ export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
 cd ~/devops/chris/infra
 ```
 
-1. **Create the state bucket in AWS with script 00.** Run this once, before Terraform bootstrap and before scripts 01-06. Choose a globally unique S3 bucket name using lowercase letters, numbers, and hyphens, for example `mackllc-terraform-state-123456789012`. Replace `<STATE_BUCKET>` below with your name; do not type the angle brackets.
+1. **Create the state bucket in AWS with script 00.** Run this once, before Terraform bootstrap and before scripts 01-06. Choose a globally unique S3 bucket name using lowercase letters, numbers, and hyphens, for example `mackllc-terraform-state-123456789012`. Set `STATE_BUCKET` to your chosen name, without angle brackets:
    ```bash
+   export STATE_BUCKET=your-unique-lowercase-state-bucket
    cd ~/devops/chris/infra/scripts
-   ./00_create_state_bucket.sh <STATE_BUCKET>
+   ./00_create_state_bucket.sh "$STATE_BUCKET"
    ```
    The bucket name is the script's only command argument. It uses the local `AWS_PROFILE` and `AWS_REGION` set above; this runbook's Terraform backends use `us-east-1`.
 
@@ -91,26 +133,163 @@ cd ~/devops/chris/infra
    After confirmation, it creates the S3 bucket, enables versioning, verifies that versioning is `Enabled`, and prints a creation report with the AWS account, region, bucket name, versioning status, and AWS `create-bucket` response. It does not run Terraform or change GitHub settings. If an AWS command fails, the script stops; a bucket already created is not automatically deleted.
 
    **Verify:** the creation report shows versioning `Enabled`. Do not continue after cancellation or an error. Keep the exact bucket name; use it for Terraform initialization below and for `TF_STATE_BUCKET` in step 3. Do not re-run this creation script for an existing bucket.
-2. **Create the GitHub CI login in AWS.** From your `infra` folder, generate the GitHub OIDC subjects:
-   ```bash
-   cd ~/devops/chris/infra/scripts
-   GITHUB_ORG=<ORG> ./00_oidc_subjects.sh
+
+   Example prompt and successful report:
+
+   ```text
+   AWS account: 123456789012
+   Region:      us-east-1
+   Bucket:      your-unique-lowercase-state-bucket
+   Create this bucket and enable versioning? [y/N] y
+
+   Bucket creation report
+   AWS account: 123456789012
+   Region:      us-east-1
+   Bucket:      your-unique-lowercase-state-bucket
+   Versioning:  Enabled
+   AWS create-bucket response:
+   {
+       "Location": "/your-unique-lowercase-state-bucket"
+   }
    ```
-   Copy the JSON output. Then create the OIDC provider and two Terraform roles (plan = read-only, apply = write) from the separate `envs/bootstrap` Terraform root. Replace `<STATE_BUCKET>` and `<SUBJECTS_JSON>` with the bucket name and copied JSON; omit angle brackets. Run this once from your workstation with your SSO admin profile, not from CI:
+
+   AWS may include additional fields in the creation response. Cancellation prints `Cancelled; no AWS resources were changed.` If you are already in `infra/scripts`, the command is `./00_create_state_bucket.sh`, not `scripts/00_create_state_bucket.sh`. If the file is missing, check your checkout; changing directories does not download a missing script.
+
+2. **Generate the JSON for the GitHub CI login.** Replace `your-github-owner` below with the owner of all four repositories (for example, `Alexatlanta1981`). The script asks GitHub for the owner and repository IDs. Capture its entire JSON output automatically so no braces or quotes are lost:
+   ```bash
+   export GITHUB_ORG=your-github-owner
+   cd ~/devops/chris/infra/scripts
+   SUBJECTS_JSON=$(./00_oidc_subjects.sh) &&
+   printf '%s\n' "$SUBJECTS_JSON"
+   ```
+
+   Example output (all IDs below are dummy values):
+
+   ```json
+   {"infra":"repo:your-github-owner@111111/infra@222221","backend":"repo:your-github-owner@111111/backend@222222","frontend":"repo:your-github-owner@111111/frontend@222223","gitops":"repo:your-github-owner@111111/gitops@222224"}
+   ```
+
+   **Verify:** all four entries, including `infra`, are present. This JSON is not bucket information and does not go into script 00. It is the value of Terraform's `github_repo_subject_prefixes` variable and, later, GitHub's `GH_REPO_SUBJECTS` repository variable. Use the real output, not the sample above. If the script fails, stop and check `gh auth status`, the owner, and access to all four repos.
+
+3. **Initialize and apply Terraform bootstrap.** Run from `envs/bootstrap`, not the repository root and not `scripts`. The root `infra` folder has no Terraform configuration. Before applying, display the working directory and saved inputs:
    ```bash
    cd ~/devops/chris/infra/envs/bootstrap
-   terraform init -backend-config="bucket=<STATE_BUCKET>"
-   terraform apply -var='github_repo_subject_prefixes=<SUBJECTS_JSON>'
+   pwd
+   ls *.tf
+   printf 'Bucket: %s\nSubjects: %s\n' "$STATE_BUCKET" "$SUBJECTS_JSON"
    ```
+
+   Example directory and file output:
+
+   ```text
+   /home/chris/devops/chris/infra/envs/bootstrap
+   backend.tf  main.tf  outputs.tf  providers.tf  variables.tf
+   Bucket: your-unique-lowercase-state-bucket
+   Subjects: {"infra":...,"backend":...,"frontend":...,"gitops":...}
+   ```
+
+   The `Subjects` line above is abbreviated for readability; your actual value must be complete JSON. If the bucket or JSON is blank, repeat the corresponding input step in this terminal.
+
+   Run this once locally with your SSO admin profile, not from CI. Shell double quotes expand the variables; you do not need to paste JSON into the command:
+   ```bash
+   cd ~/devops/chris/infra/envs/bootstrap
+   terraform init -backend-config="bucket=${STATE_BUCKET:?Set STATE_BUCKET to your bucket name}" &&
+   terraform apply -var="github_repo_subject_prefixes=${SUBJECTS_JSON:?Generate SUBJECTS_JSON in step 2}"
+   ```
+
+   Example successful initialization:
+
+   ```text
+   Successfully configured the backend "s3"!
+   Terraform has been successfully initialized!
+   ```
+
+   Terraform then displays a plan and asks `Enter a value:`. Review the account, planned resources, imports, and any changes before typing `yes`; do not approve unexpected deletions. The current bootstrap configuration includes imports for previously created CI roles. If Terraform says an import target does not exist, stop: this configuration needs a reviewed fresh-account adjustment, not repeated apply attempts.
+
+   A successful apply prints `Apply complete!` followed by outputs such as:
+
+   ```text
+   Outputs:
+
+   terraform_apply_role_arn = "arn:aws:iam::123456789012:role/mackllc-dev-terraform-apply-gha"
+   terraform_plan_role_arn = "arn:aws:iam::123456789012:role/mackllc-dev-terraform-plan-gha"
+   ```
+
    Save the plan-role and apply-role ARNs printed by Terraform. In step 3, enter them as the `AWS_TF_PLAN_ROLE_ARN` and `AWS_TF_APPLY_ROLE_ARN` repository variables. This bootstrap root has separate state, so destroying `envs/dev` will not remove the CI login.
 
-**Verify:** the bucket script reports versioning `Enabled`; `aws iam list-open-id-connect-providers --profile "$AWS_PROFILE"` lists `token.actions.githubusercontent.com`; `aws iam list-roles --query 'Roles[].RoleName' --profile "$AWS_PROFILE"` shows both CI roles.
+### If bootstrap stops with an error
+
+**`Terraform initialized in an empty directory!` or `No configuration files`:** you ran Terraform in the wrong folder. No resources were changed by that failed apply. Change to `~/devops/chris/infra/envs/bootstrap`, check `ls *.tf`, then rerun initialization and apply above. Do not use `terraform destroy` to fix this error.
+
+**`Backend configuration changed`:** first determine whether this configuration already has state managing AWS resources in a different bucket or local state. Do not discard or overwrite existing state.
+
+- If this is your first bootstrap apply and there is no existing managed state to preserve, use the following command, then retry apply:
+  ```bash
+  cd ~/devops/chris/infra/envs/bootstrap
+  terraform init -reconfigure -backend-config="bucket=${STATE_BUCKET:?Set STATE_BUCKET}"
+  ```
+- If resources were already managed using the old backend, stop and review both state locations. Back up existing state and use `terraform init -migrate-state` only when intentionally moving that state. `-reconfigure` does not migrate it.
+- If you are unsure, stop and establish where the existing state is before choosing either option.
+
+**`No valid credential sources found`, `InvalidGrantException`, or cached SSO token refresh failed:** sign in again and verify the account before retrying initialization. Replace the profile example with your configured profile:
+
+```bash
+export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
+aws sso login --profile "$AWS_PROFILE" &&
+aws sts get-caller-identity --profile "$AWS_PROFILE"
+```
+
+The identity output should show your intended AWS account as in step 0. Login does not create resources. Keep the same terminal so the bucket and JSON variables remain available.
+
+**Verify bootstrap:**
+
+```bash
+aws s3api get-bucket-versioning --bucket "${STATE_BUCKET:?Set STATE_BUCKET}" --profile "$AWS_PROFILE" --output json
+aws iam list-open-id-connect-providers --profile "$AWS_PROFILE" --output json
+cd ~/devops/chris/infra/envs/bootstrap
+terraform output
+```
+
+Example AWS verification output:
+
+```json
+{"Status":"Enabled"}
+```
+
+```json
+{"OpenIDConnectProviderList":[{"Arn":"arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"}]}
+```
+
+`terraform output` should show both role ARNs as illustrated above. Other OIDC providers may also be listed. Save the actual values, not these examples.
 
 ## 3. GitHub settings for `infra`
 
-Go to GitHub.com → `<ORG>/infra` → **Settings → Secrets and variables → Actions**. For each Variable row, select **New repository variable**. For the Secret row, select **New repository secret**. Do not enter the AWS SSO profile here.
+Run the GitHub settings script after Terraform bootstrap has succeeded. It requires `gh`, Terraform, OpenSSL, access to the bootstrap state, and repository administration permission. It uses the GitHub account shown by `gh auth status`; that account becomes the required reviewer. Do not enter your AWS SSO profile in GitHub.
 
-**Enter the bucket name:** create a repository variable named `TF_STATE_BUCKET`. Set its value to the exact S3 bucket name you created in AWS in step 2. It must match the bucket name passed to `terraform init`.
+Use the owner and bucket already set in step 2:
+
+```bash
+cd ~/devops/chris/infra/scripts
+./00_setup_github_settings.sh
+```
+
+If `GITHUB_ORG` or `STATE_BUCKET` is unset, the script prompts for it. Enter the GitHub owner only (for example, `Alexatlanta1981`, not a URL or `owner/infra`) and the exact existing bucket name from step 2. It does not create a bucket or reinitialize Terraform.
+
+The script reads `terraform_plan_role_arn` and `terraform_apply_role_arn` from `envs/bootstrap` using Terraform's `-chdir` option and regenerates the complete OIDC subjects JSON. Keep your AWS SSO session active so Terraform can read the state. If a prerequisite read fails, no settings are written.
+
+At the SSO role prompt, enter the full IAM role ARN if you want the EKS admin access grant. Enter preserves an existing `SSO_ADMIN_ROLE_ARN` variable, or skips it if absent. To look up available SSO role ARNs:
+
+```bash
+aws iam list-roles --query "Roles[?contains(RoleName,'AWSReservedSSO_')].Arn" --profile "$AWS_PROFILE" --output json
+```
+
+Before making changes, the script shows the repository, authenticated reviewer, bucket, role ARNs, OIDC subjects, and whether it will create or preserve the JWT secret. Type `y` at `Apply these GitHub settings? [y/N]` only after checking the values. Enter or `n` cancels without changes.
+
+It configures the `dev` environment first, then verifies that GitHub retained the reviewer before setting variables and the secret. It disables admin bypass and preserves existing wait timers, self-review restrictions, and deployment branch policies. If `dev` already lists other reviewers, it stops before writing: only one listed reviewer needs to approve on GitHub, so adding you alongside others would not guarantee your approval. Review that policy manually rather than silently removing existing reviewers.
+
+Required reviewers depend on GitHub plan and repository visibility. An unsupported setting or insufficient permissions stops setup; do not bypass this error by deploying without protection. If existing rules prevent self-review, your own dispatched job cannot be approved by you; review the intended approval flow before dispatching.
+
+The script writes or updates these repository settings (the SSO variable is optional):
 
 | Type | Name | Value |
 |---|---|---|
@@ -120,11 +299,56 @@ Go to GitHub.com → `<ORG>/infra` → **Settings → Secrets and variables → 
 | Variable | `AWS_TF_APPLY_ROLE_ARN` | Apply role ARN printed by Terraform in step 2 |
 | Variable | `GH_REPO_SUBJECTS` | The JSON printed by `scripts/00_oidc_subjects.sh` in step 2 |
 | Variable | `SSO_ADMIN_ROLE_ARN` | Your IAM Identity Center admin role ARN (leave empty to skip). To look it up, run `aws iam list-roles --query "Roles[?contains(RoleName,'AWSReservedSSO_')].Arn" --profile "$AWS_PROFILE"` in your terminal. |
-| Secret | `DEV_JWT_SECRET` | A long random string; generate one in your terminal with `openssl rand -base64 48` |
+| Secret | `DEV_JWT_SECRET` | Generated with OpenSSL only when absent; an existing secret is never intentionally replaced |
 
-Also create the `dev` **environment** at `<ORG>/infra` → **Settings → Environments**, and add yourself as a required reviewer. Terraform apply pauses for approval there.
+The generated secret is piped directly to GitHub and never printed or saved to a file. Do not run this script with shell tracing (`bash -x`). Re-running updates the variables but preserves an existing JWT secret. If a write fails partway through, the script reports failure; some settings may already have changed. Inspect them before retrying.
 
-**Verify:** `gh variable list -R <ORG>/infra` shows the six variables; `gh secret list -R <ORG>/infra` shows `DEV_JWT_SECRET`.
+Example confirmation summary excerpt (role ARNs and JSON also appear):
+
+```text
+Repository: your-github-owner/infra
+Required dev reviewer: your-user
+State bucket: your-unique-lowercase-state-bucket
+DEV_JWT_SECRET: preserve existing secret
+Apply these GitHub settings? [y/N] y
+```
+
+For a new secret the message says `generate a new secret (value will not be displayed)` instead.
+
+**Verify:** the script reads back each variable and checks its value, verifies the JWT secret name exists, checks admin bypass is disabled, and prints variables, secret names, and environment protection rules. A successful run ends with:
+
+```text
+Setup complete. No workflows were dispatched, commits pushed, or PRs merged.
+```
+
+You can also verify manually:
+
+```bash
+gh variable list -R "$GITHUB_ORG/infra"
+gh secret list -R "$GITHUB_ORG/infra"
+gh api "repos/$GITHUB_ORG/infra/environments/dev" --jq '{name, can_admins_bypass, protection_rules}'
+```
+
+Expect five required variables, plus `SSO_ADMIN_ROLE_ARN` if provided or already present, and the `DEV_JWT_SECRET` secret name. Terraform apply pauses for approval in the configured `dev` environment.
+
+Example output excerpts (timestamps omitted here; secret values are never printed):
+
+```text
+NAME                   VALUE
+GH_ORG                 your-github-owner
+TF_STATE_BUCKET        your-unique-lowercase-state-bucket
+AWS_TF_PLAN_ROLE_ARN    arn:aws:iam::123456789012:role/mackllc-dev-terraform-plan-gha
+AWS_TF_APPLY_ROLE_ARN   arn:aws:iam::123456789012:role/mackllc-dev-terraform-apply-gha
+GH_REPO_SUBJECTS       {"infra":...,"backend":...,"frontend":...,"gitops":...}
+SSO_ADMIN_ROLE_ARN     arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AdministratorAccess_example
+```
+
+```text
+NAME
+DEV_JWT_SECRET
+```
+
+The JSON above is abbreviated; the actual GitHub value must be the complete `SUBJECTS_JSON` generated in step 2. For `SSO_ADMIN_ROLE_ARN`, use the full IAM role ARN returned by `list-roles` (including its path), not the STS assumed-role ARN from `get-caller-identity`. If multiple SSO roles are listed, select the role used by your admin profile. This variable is optional; omitting it means this access grant is skipped.
 
 ## 4. Create the AWS infrastructure (Terraform, via Git)
 
@@ -143,6 +367,25 @@ After opening the PR, review the Terraform plan and wait for required CI checks 
 
 **Verify:** `gh run list -R <ORG>/infra --workflow terraform.yml --limit 1` shows `completed success`; `aws eks list-clusters` shows `mackllc-dev-cluster`.
 
+For easy-to-read status output, run:
+
+```bash
+gh run list -R <ORG>/infra --workflow terraform.yml --limit 1 --json status,conclusion,displayTitle
+aws eks list-clusters --output json
+```
+
+Example outputs:
+
+```json
+[{"status":"completed","conclusion":"success","displayTitle":"Terraform Infrastructure"}]
+```
+
+```json
+{"clusters":["mackllc-dev-cluster"]}
+```
+
+Make sure the run is your intended apply run, not an unrelated plan or an older successful run. `queued`, `in_progress`, or a blank conclusion is not a completed deployment. Review failures in GitHub Actions; do not proceed to kubectl until apply succeeds.
+
 ## 5. Connect kubectl
 
 After the apply workflow succeeds, run these commands in your workstation's Ubuntu/WSL terminal. The first command adds EKS credentials to your local `~/.kube/config`; the second verifies access.
@@ -153,6 +396,16 @@ kubectl get nodes
 ```
 
 **Verify:** nodes show `Ready`.
+
+Example output:
+
+```text
+Added new context arn:aws:eks:us-east-1:123456789012:cluster/mackllc-dev-cluster to /home/chris/.kube/config
+NAME                          STATUS   ROLES    AGE   VERSION
+ip-10-0-1-10.ec2.internal      Ready    <none>   5m    v1.x.x
+```
+
+The CLI may say `Updated context` instead. An `Unauthorized` response from kubectl is not fixed by recreating the bucket: verify SSO login, account, cluster context, and the EKS access grant for your SSO role.
 
 ## 6. GitHub App for CI → gitops (no personal tokens)
 
@@ -190,6 +443,20 @@ Do not enter the reader App values in GitHub settings. In step 7, enter its App 
 
 **Verify:** `gh variable list -R <ORG>/backend --env dev` shows `GITOPS_APP_ID`; `gh secret list -R <ORG>/backend --env dev` shows `GITOPS_APP_PRIVATE_KEY`. Check repository-level values with `gh variable list -R <ORG>/backend` and `gh secret list -R <ORG>/backend`. Repeat for `frontend`.
 
+Example output excerpts:
+
+```text
+NAME            VALUE
+GITOPS_APP_ID   123456
+```
+
+```text
+NAME
+GITOPS_APP_PRIVATE_KEY
+```
+
+The first value must be your writer App ID; the second command lists only the secret name, not its private key. Missing rows mean the setting is absent or you are checking the wrong repository/environment. Never paste private keys or secret values into troubleshooting messages.
+
 ## 7. Install cluster components (scripts, in order)
 
 After step 5 reports EKS nodes as `Ready`, open an Ubuntu/WSL terminal and run these scripts from `~/devops/chris/infra/scripts` in order. They install the AWS Load Balancer Controller, Argo CD, External Secrets Operator, connect Argo CD to `gitops`, and configure the cluster secret store.
@@ -221,7 +488,39 @@ kubectl -n argocd rollout restart deploy argocd-repo-server
 kubectl annotate applications -n argocd --all argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-**Verify:** `kubectl get pods -n argocd` and `-n external-secrets` and `-n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller` are all `Running`; `kubectl get clustersecretstore` shows `Valid`; `kubectl get externalsecret -A` shows `SecretSynced`.
+**Verify:** run each check separately:
+
+```bash
+kubectl get pods -n argocd
+kubectl get pods -n external-secrets
+kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
+kubectl get clustersecretstore
+kubectl get externalsecret -A
+```
+
+Example excerpts from the three pod listings:
+
+```text
+NAME                                   READY   STATUS    RESTARTS   AGE
+argocd-repo-server-example              1/1     Running   0          3m
+external-secrets-example                1/1     Running   0          3m
+aws-load-balancer-controller-example    1/1     Running   0          3m
+```
+
+Example secret-store and external-secret output:
+
+```text
+NAME                  AGE   STATUS   CAPABILITIES   READY
+aws-secrets-manager   3m    Valid    ReadWrite      True
+```
+
+```text
+NAMESPACE   NAME             STORETYPE            STORE                 REFRESH INTERVAL   STATUS         READY
+dev         db-credentials   ClusterSecretStore   aws-secrets-manager   1h                 SecretSynced   True
+dev         jwt-secret       ClusterSecretStore   aws-secrets-manager   1h                 SecretSynced   True
+```
+
+Column layouts depend on the installed version. All expected pods must be ready, not just `Running`; the store must be valid and both secrets synced. `No resources found`, `Pending`, or `SecretSyncedError` is not success; use the troubleshooting section before continuing.
 
 ## 8. Build the images
 
@@ -257,6 +556,21 @@ ECR tags are immutable: re-running the same commit fails to push. Make a new com
 
 **Verify:** `gh run list -R <ORG>/backend --limit 8` all `success`; `aws ecr describe-images --repository-name <repo> --query 'imageDetails[].imageTags'` shows a `sha-xxxxxxx` tag; `git -C ~/devops/chris/gitops pull` shows new tag commits.
 
+Example ECR output with `--output json`:
+
+```json
+[["sha-abc1234"]]
+```
+
+Example Git pull output excerpt when CI has updated the image tag:
+
+```text
+Updating abc1234..def5678
+Fast-forward
+```
+
+The actual tag must match the commit you built. A pull that says `Already up to date.` does not by itself prove a new image was deployed. Check the specific service's workflow run and the resulting tag change; older failed runs in the list need not describe the current build.
+
 ## 9. Deploy and verify
 
 After step 8 succeeds, run script 05 from `~/devops/chris/infra/scripts` in your Ubuntu/WSL terminal. Replace `<ORG>` with the GitHub owner and `<AWS_SSO_PROFILE>` with the local profile name from step 0. These are command-line values; do not add them to GitHub settings. Script 05 creates the Argo CD applications in namespace `dev`.
@@ -277,9 +591,40 @@ kubectl get pods -n dev  # all Running
 kubectl get ingress -n dev  # ADDRESS filled in
 ```
 
+Example output excerpts:
+
+```text
+NAME             SYNC STATUS   HEALTH STATUS
+auth-service     Synced        Healthy
+```
+
+```text
+NAME                      READY   STATUS    RESTARTS   AGE
+auth-service-example      1/1     Running   0          2m
+```
+
+```text
+NAME          CLASS   HOSTS   ADDRESS                                                    PORTS   AGE
+app-ingress   alb     *       example-alb-123456.us-east-1.elb.amazonaws.com               80      2m
+```
+
+Resource names are illustrative; check every deployed application's sync and health, every expected pod's readiness, and your actual Ingress address. `OutOfSync`, `Degraded`, an empty address, or an unready pod requires investigation.
+
 Get the load balancer hostname from the `ADDRESS` column of `kubectl get ingress -n dev`, then open `http://<alb-hostname>/`.
 
 **Verify:** `curl -s -o /dev/null -w '%{http_code}\n' http://<alb-hostname>/` prints `200`; `curl -s -o /dev/null -w '%{http_code}\n' http://<alb-hostname>/api/` prints 200, 401, 403 or 404 (not 502/503).
+
+Example outputs:
+
+```text
+200
+```
+
+```text
+401
+```
+
+These are separate responses for `/` and `/api/`. `401` means authentication is required; `404` alone does not prove the backend is healthy. Use script 06's service-route checks as well. `000` means curl did not receive an HTTP response; `502`/`503` indicates routing or backend availability trouble.
 
 ## 10. Day-2: shipping a change
 
@@ -303,6 +648,21 @@ CI updates the tag in `gitops`; Argo CD syncs it. Roll back by reverting the tag
 
 **Verify:** the new `sha-` tag appears in `kubectl get deploy -n dev -o wide` and the pod is `Running`.
 
+To inspect images directly:
+
+```bash
+kubectl get deploy -n dev -o custom-columns='NAME:.metadata.name,READY:.status.readyReplicas,IMAGES:.spec.template.spec.containers[*].image'
+```
+
+Example output:
+
+```text
+NAME           READY   IMAGES
+auth-service   1       123456789012.dkr.ecr.us-east-1.amazonaws.com/auth-service:sha-abc1234
+```
+
+Compare the actual tag to the new build and verify the expected ready replica count; the image field alone does not confirm a successful rollout.
+
 ## 11. Tear down (reverse order, Terraform last)
 
 **Where:** Run the `kubectl`, `helm` and AWS commands from your workstation terminal; start the final Terraform destroy from GitHub Actions. Use the AWS SSO profile from step 0.
@@ -311,11 +671,27 @@ Run each step, then its **Verify** command, before moving on. Destroying the clu
 
 If you opened a new terminal, run `export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1` first, replacing `mackllc-admin` with the profile name you chose in step 0.
 
+Before any deletion, verify your account and cluster:
+
+```bash
+aws sts get-caller-identity
+kubectl config current-context
+```
+
+The account must be your intended dev account and the context should identify `mackllc-dev-cluster`, for example `arn:aws:eks:us-east-1:123456789012:cluster/mackllc-dev-cluster`. The commands below delete all applications and Ingresses in that cluster; use them only for the dedicated platform cluster, not a shared cluster.
+
 **1. Delete the Argo apps**
 ```bash
 kubectl -n argocd delete applications --all
 ```
 Verify: `kubectl -n argocd get applications` prints `No resources found`.
+
+Example deletion and verification output:
+
+```text
+application.argoproj.io "auth-service" deleted
+No resources found in argocd namespace.
+```
 
 **2. Delete Ingresses (the ALB controller removes the ALB)**
 ```bash
@@ -323,11 +699,20 @@ kubectl delete ingress --all -A
 ```
 Verify: `kubectl get ingress -A` prints `No resources found`.
 
+Example output:
+
+```text
+ingress.networking.k8s.io "app-ingress" deleted
+No resources found
+```
+
 **3. Wait for the ALB to disappear (can take 1-3 minutes)**
 ```bash
 aws elbv2 describe-load-balancers --query 'LoadBalancers[].LoadBalancerName' --output text
 ```
 Verify: empty output. If a name is still listed, wait and rerun. Do not continue until it is empty.
+
+Successful verification prints no load balancer names and returns to the shell prompt. This query lists all load balancers in the selected account/region. In an account with unrelated workloads, do not delete their load balancers or wait for them to disappear; verify removal of this platform's load balancer specifically.
 
 **4. Remove cluster add-ons**
 ```bash
@@ -337,12 +722,24 @@ helm uninstall aws-load-balancer-controller -n kube-system
 ```
 Verify: `helm list -A` shows none of the three.
 
+Example uninstall messages:
+
+```text
+release "argocd" uninstalled
+release "external-secrets" uninstalled
+release "aws-load-balancer-controller" uninstalled
+```
+
+An empty Helm listing still prints its column header. Other releases may remain; none of these three should remain.
+
 **5. Destroy AWS (VPC, EKS, RDS, ECR, workload IAM) via CI** (the OIDC provider and CI roles in `envs/bootstrap` are intentionally left in place)
 ```bash
 gh workflow run terraform.yml -R <ORG>/infra -f action=destroy -f confirm_destroy=destroy
 gh run list -R <ORG>/infra --workflow terraform.yml --limit 1
 ```
 Approve the run in the `dev` environment (GitHub > Actions > the run > Review deployments). Verify: the run shows `completed success`.
+
+As in step 4, the desired status is `completed` and conclusion is `success`, specifically for the destroy run. A queued approval is not a completed destroy.
 
 **6. Confirm nothing is left in AWS**
 ```bash
@@ -355,6 +752,14 @@ aws rds describe-db-snapshots --snapshot-type manual --query 'DBSnapshots[].DBSn
 ```
 Verify: every command returns `[]` (or empty). Delete any leftover RDS snapshot if you do not want to keep it.
 
+Example output per command with `--output json`:
+
+```json
+[]
+```
+
+These queries cover the selected account/region, not just this platform. If other workloads exist, unrelated resources may legitimately remain; identify resources by this deployment before considering cleanup. The state bucket, bootstrap OIDC provider, and CI roles are intentionally retained and are not covered by these empty-list checks.
+
 **7. Clean up local and GitHub leftovers (optional)**
 ```bash
 rm -rf /tmp/mf
@@ -362,10 +767,18 @@ gh secret list -R <ORG>/backend; gh secret list -R <ORG>/frontend
 ```
 Delete the GitHub App (Settings > Developer settings > GitHub Apps) if the platform is retired.
 
+`gh secret list` displays secret names and update times, not their contents. Listing does not delete them.
+
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
+| Script says `No such file or directory` | Run the `cd` above that script. Inside `infra/scripts`, use `./00_create_state_bucket.sh`, not `scripts/00_create_state_bucket.sh`. Verify the approved script exists in this checkout. |
+| Bucket name rejected | Use a valid globally unique lowercase S3 name; capital letters are not allowed. |
+| Terraform says empty directory / no configuration files | Use `cd ~/devops/chris/infra/envs/bootstrap`; see step 2. Do not destroy anything. |
+| Backend configuration changed | Determine whether state already exists before choosing reconfiguration or migration; see step 2. |
+| No valid credentials / SSO `InvalidGrantException` | Refresh the selected SSO profile and verify the account; see step 2. |
+| JSON parse error or missing `infra` entry | Regenerate the complete `SUBJECTS_JSON` as in step 2; do not manually paste a partial object. |
 | Ingress has no ADDRESS | `kubectl logs -n kube-system deploy/aws-load-balancer-controller` (look for AccessDenied) |
 | Pod CrashLoop | `kubectl logs <pod> -n dev --previous` |
 | ExternalSecret not ready | `kubectl describe externalsecret -n dev` |
@@ -374,6 +787,15 @@ Delete the GitHub App (Settings > Developer settings > GitHub Apps) if the platf
 | Argo CD apps `Unknown`, no pods, `401` in `kubectl describe application` | Wrong App ID / installation ID / key in `gitops-repo`; see step 7 fix |
 | `04_run_pipeline.py` HTTP 404 | Wrong `GITHUB_ORG`, repo name or `BRANCH` |
 | CI 403 writing gitops | App not installed on `gitops` or missing Contents: write |
+
+### Commands that do not produce a resource report
+
+- `cd` and `export` normally print nothing. Use `pwd` to confirm your directory and `printf '%s\n' "$STATE_BUCKET"` to inspect the selected bucket name.
+- AWS `put-bucket-versioning` normally prints nothing on success; script 00 follows it with a read-back verification. No output is not a substitute for verification.
+- `gh pr create` prints the new PR URL, such as `https://github.com/your-github-owner/infra/pull/42`. It does not merge the PR or prove CI passed.
+- `gh workflow run` may print a dispatch confirmation or no output, depending on the CLI version. Inspect the new run in GitHub Actions or with `gh run list`; do not assume dispatch means success.
+- `git clone`, `git push`, and `git pull` print progress and repository-specific summaries. Read errors such as authentication failures or rejected pushes rather than continuing.
+- Scripts 01-06 print prompts, progress, and errors that vary with selected services and installed resources. Use the concrete verification commands above rather than expecting identical log output. Stop on failures; never share private keys, JWT secrets, or database credentials as example output.
 
 
 ## Using your own account or organization

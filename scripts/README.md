@@ -16,7 +16,7 @@ Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops), [backend](
                    Argo CD sync)            wait for images)
 ```
 
-Scripts 01-06 prompt for what they need, skip prompts already satisfied by the environment, and can be re-run safely. Script 00 is a one-time AWS bootstrap step and is not intended to be re-run after bucket creation.
+Scripts 01-06 prompt for what they need, skip prompts already satisfied by the environment, and can be re-run safely. `00_create_state_bucket.sh` is a one-time AWS bootstrap step and is not intended to be re-run after bucket creation. `00_setup_github_settings.sh` runs after Terraform bootstrap and can be re-run to verify or update GitHub settings without rotating an existing JWT secret.
 
 Bucket creation, input values, confirmation, and the creation report are documented in [deployment runbook step 2](../docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites). Run script 00 there before Terraform bootstrap; run scripts 01-06 after Terraform creates the cluster.
 
@@ -25,6 +25,7 @@ Bucket creation, input values, confirmation, and the creation report are documen
 | Script | Purpose |
 |---|---|
 | `00_create_state_bucket.sh` | Creates the Terraform state S3 bucket and enables versioning. Run once during AWS bootstrap; uses the active AWS CLI credentials and `AWS_REGION` (default `us-east-1`). |
+| `00_setup_github_settings.sh` | Configures infra repository variables, creates a JWT secret only if absent, and requires your review in the `dev` environment. See [runbook step 3](../docs/DEPLOY-RUNBOOK.md#3-github-settings-for-infra) for inputs and verification. |
 | `01_install_prerequisites.py` | Installs the ALB controller, Argo CD and External Secrets with Helm. Restarts the ALB controller so its webhook cert is fresh. |
 | `02_bootstrap_argocd.py` | Gives Argo CD access to `gitops`, creates the `mackllc` project and the root app for the chosen `ENV`. |
 | `03_setup_external_secrets.py` | Creates the ClusterSecretStore and ExternalSecrets from the RDS and Secrets Manager entries. |
@@ -139,6 +140,7 @@ Script changes go through a pull request to **`main`**. CI tests them automatica
 | Required check | What it does |
 |---|---|
 | `static` | `py_compile` plus `ruff` (syntax, undefined names, unused code) on `scripts/*.py` |
+| `static` (shell checks) | Bash syntax checks and mocked GitHub settings setup tests; no real AWS or GitHub changes |
 | `bootstrap smoke (01-03, kind)` | Spins up a throwaway `kind` cluster, runs scripts 01–03 with dummy AWS values, and asserts Argo CD, External Secrets, the `dev` namespace, the repo secret, the `mackllc` AppProject, the ClusterSecretStore and ExternalSecrets exist |
 | `app layer (04-06, kind)` | Fresh `kind` cluster plus the real `gitops` repo; runs 01–06 with a fake `gh` CLI so no real builds start |
 

@@ -16,6 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check shell syntax and GitHub settings setup
+        run: |
+          for script in scripts/*.sh scripts/tests/*.sh; do
+            bash -n "$script"
+          done
+          bash scripts/tests/github_settings_test.sh
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
