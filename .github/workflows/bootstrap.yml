@@ -48,7 +48,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - run: terraform fmt -check -recursive
-      - run: terraform init
+      - run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
       - run: terraform validate -no-color
       - run: terraform plan -no-color
 
@@ -75,5 +75,5 @@ jobs:
           role-to-assume: ${{ vars.AWS_TF_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - run: terraform init
+      - run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
       - run: terraform apply -auto-approve -no-color
