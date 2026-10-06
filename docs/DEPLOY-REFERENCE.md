@@ -667,6 +667,11 @@ The scripts prompt for any required values. When `02_bootstrap_argocd.py` prompt
 
 Script 02 saves these credentials in Kubernetes secret `gitops-repo` in namespace `argocd`. Do not enter them in GitHub settings. Wrong credentials cause `401 Unauthorized` errors and Argo CD applications may remain `Unknown`.
 
+The private key is loaded by `kubectl --from-file`; only its path, not its contents,
+is passed in command arguments. The generated Secret manifest is captured and
+sent to `kubectl apply` through standard input, without printing it. Keep the
+key file private and readable only by the intended workstation user.
+
 **Fix a wrong value without re-running 02:**
 
 ```bash

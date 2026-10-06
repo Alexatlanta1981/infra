@@ -20,6 +20,13 @@ Scripts 01-06 prompt for what they need, skip prompts already satisfied by the e
 
 Script 01 does not retrieve or print the Argo CD administrator password. Use the explicit private-terminal retrieval instructions in [runbook step 7.A](../docs/DEPLOY-RUNBOOK.md#7a-install-cluster-prerequisites-script-01) only when you need UI access. Script 02 requires your own GitOps HTTPS URL through `GITOPS_REPO_URL` or its prompt; there is no personal repository default.
 
+Script 02 loads the reader App private key from `GITHUB_APP_KEY_PATH` using
+`kubectl --from-file`. Only the file path, not private-key contents, appears in
+command arguments. The generated Secret manifest is captured and passed to
+`kubectl apply` through standard input without printing it. Keep the key file
+outside Git and restrict access to the intended workstation user. This change
+does not alter GitHub App permissions, AWS SSO, OIDC, or IRSA.
+
 Bucket creation, input values, confirmation, and the creation report are documented in [deployment runbook step 2](../docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites). Run script 00 there before Terraform bootstrap; run scripts 01-06 after Terraform creates the cluster.
 
 ## Step 3: set up GitHub settings (start here after Terraform bootstrap)

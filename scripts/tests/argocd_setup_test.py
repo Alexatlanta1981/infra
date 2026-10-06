@@ -172,6 +172,40 @@ class ArgoCDSetupTests(unittest.TestCase):
              namespace)
         return assignment, namespace
 
+    def test_reader_key_is_loaded_from_file_not_command_arguments(self):
+        commands = []
+        inputs = []
+        generated_secret = "mock-generated-secret-yaml"
+
+        def run(args, **kwargs):
+            commands.append(args)
+            if "input" in kwargs:
+                inputs.append(kwargs["input"])
+            return subprocess.CompletedProcess(args, 0, stdout=generated_secret)
+
+        environment = {
+            "ENV": "dev",
+            "GITOPS_REPO_URL": "https://github.com/demo-owner/gitops.git",
+            "GITHUB_APP_ID": "123",
+            "GITHUB_APP_INSTALLATION_ID": "456",
+            "GITHUB_APP_KEY_PATH": "~/reader key.pem",
+            "GITOPS_PATH": "/nonexistent-demo-gitops",
+        }
+        with patch.dict(os.environ, environment, clear=True), \
+                patch("subprocess.run", side_effect=run), \
+                patch("builtins.input", return_value="Y"), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            runpy.run_path(str(SCRIPTS / "02_bootstrap_argocd.py"))
+        create = next(cmd for cmd in commands if cmd[:3] == ["kubectl", "create", "secret"])
+        self.assertIn("--from-file=githubAppPrivateKey=" +
+                      os.path.expanduser("~/reader key.pem"), create)
+        self.assertFalse(any(arg.startswith("--from-literal=githubAppPrivateKey=")
+                             for cmd in commands for arg in cmd))
+        self.assertIn(generated_secret, inputs)
+        self.assertNotIn(generated_secret, output.getvalue())
+        self.assertIn("argocd.argoproj.io/secret-type=repository",
+                      next(cmd for cmd in commands if cmd[:2] == ["kubectl", "label"]))
+
     def test_repository_url_is_required(self):
         assignment, namespace = self.repository_prompt()
 
