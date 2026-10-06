@@ -27,6 +27,16 @@ This runbook assumes you already have:
 
 Account setup, SSO and billing are out of scope here.
 
+## What runs where
+
+| Step | Where it runs | Credentials |
+|---|---|---|
+| State bucket, `envs/bootstrap` (OIDC provider + CI roles) | Your workstation, once | Your SSO admin login (CI cannot do this: it needs these roles to log in) |
+| Terraform for VPC, EKS, RDS | GitHub Actions: PR runs plan, merge runs apply (pauses for approval in the `dev` environment) | OIDC roles from bootstrap |
+| Scripts 01-03 (cluster add-ons), 05 (deploy) | Your workstation | SSO login + kubectl access to the cluster |
+| Script 04 (image builds) | Triggers GitHub Actions workflows in `backend` and `frontend` | GitHub App + OIDC |
+| Every change after setup | Pull request, then CI | none locally |
+
 ## 0. Workstation tools (once)
 
 Install: `git`, `gh`, `aws` (v2), `terraform` (>= 1.11), `kubectl`, `helm`, `yq`, `python3` (>= 3.10).
