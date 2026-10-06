@@ -515,7 +515,26 @@ Go to GitHub → the organization/account that owns the repos → **Settings →
 
 ### 6.A Create the writer App for CI
 
-Select Contents: write, Pull requests: write, and Metadata: read. Generate its private key. In step 6.D, enter this App ID and key in both the `backend` and `frontend` repositories.
+Scripted path (local onboarding, not CI): sign in with `gh auth login`. You need admin access to `backend`/`frontend`, existing `dev` environments in both, and permission to create/install Apps under your GitHub owner.
+
+```bash
+export GITHUB_ORG=your-github-owner
+cd ~/devops/infra/scripts
+python3 00_setup_writer_app.py --credentials-dir "$HOME/.config/infra-writer-app"
+```
+
+The script binds a temporary server to loopback only. Open its local URL in a browser on the same machine (WSL may require opening the URL manually). Confirm creation in the terminal and GitHub, then install the App on **selected repositories: gitops only**. Return to the terminal and press Enter; it verifies installation once, without polling. Confirm the separate settings-write prompt to save the App ID and private key in both repositories' `dev` environments. No workflows or deployments are launched.
+
+The recovery directory must be outside the repository with mode `700`; the generated credential file is mode `600`. It contains the private key and other generated App secrets: do not share, commit, or attach it to a PR. The script never prints credentials. Keep this file securely to recover interrupted setup:
+
+```bash
+cd ~/devops/infra/scripts
+python3 00_setup_writer_app.py --credentials-dir "$HOME/.config/infra-writer-app" --resume
+```
+
+Existing matching App IDs/keys are preserved; mismatched IDs or keys without an ID stop setup. A failure can leave the App or partial settings in place; inspect and resume rather than creating another App. The script verifies secret presence, not its encrypted value. It does not rotate keys or change the gitops ruleset bypass list (step 6.D). Writer and reader Apps remain separate.
+
+Manual alternative: select Contents: write, Pull requests: write, and Metadata: read. Generate its private key. In step 6.D, enter this App ID and key in both the `backend` and `frontend` repositories.
 
 ### 6.B Create the reader App for Argo CD
 

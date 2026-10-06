@@ -286,6 +286,10 @@ After successful CI apply, follow [cluster access](DEPLOY-REFERENCE.md#5-connect
 
 ## 6. GitHub App for CI and Argo CD
 
+For writer-App automation, run `00_setup_writer_app.py` as described in
+[step 6.A](DEPLOY-REFERENCE.md#6a-create-the-writer-app-for-ci).
+It requires browser approval and a separate confirmation before writing CI settings.
+
 Configure separate writer/reader Apps using
 [the App instructions](DEPLOY-REFERENCE.md#6-github-app-for-ci--gitops-no-personal-tokens).
 

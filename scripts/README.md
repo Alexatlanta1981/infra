@@ -148,6 +148,7 @@ Only after that success message should you continue to [runbook step 4](../docs/
 |---|---|
 | `00_create_state_bucket.sh` | Creates the Terraform state S3 bucket and enables versioning. Run once during AWS bootstrap; uses the active AWS CLI credentials and `AWS_REGION` (default `us-east-1`). |
 | `00_setup_github_settings.sh` | Configures infra repository variables, creates a JWT secret only if absent, and requires your review in the `dev` environment. See [runbook step 3](../docs/DEPLOY-RUNBOOK.md#3-github-settings-for-infra) for inputs and verification. |
+| `00_setup_writer_app.py` | Creates a writer GitHub App through browser approval, verifies gitops-only installation, and configures backend/frontend environment settings with private recovery storage. |
 | `01_install_prerequisites.py` | Installs the ALB controller, Argo CD and External Secrets with Helm. Restarts the ALB controller so its webhook cert is fresh. |
 | `02_bootstrap_argocd.py` | Gives Argo CD access to `gitops`, creates the `mackllc` project and the root app for the chosen `ENV`. |
 | `03_setup_external_secrets.py` | Creates the ClusterSecretStore and ExternalSecrets from the RDS and Secrets Manager entries. |
@@ -195,6 +196,8 @@ Optional presets (skip prompts or tune behavior):
 Full procedure and teardown: [DEPLOY-RUNBOOK](../docs/DEPLOY-RUNBOOK.md). Reference examples: [SCRIPT-LIBRARY](../docs/SCRIPT-LIBRARY.md).
 
 ## GitHub Apps: how many, where they go
+
+Create/configure the writer App with `python3 00_setup_writer_app.py --owner your-github-owner --credentials-dir "$HOME/.config/infra-writer-app"` from this scripts directory. See [step 6.A](../docs/DEPLOY-REFERENCE.md#6a-create-the-writer-app-for-ci) for browser approval, installation, private recovery storage, and `--resume`. This is one-time local onboarding, not a CI job. It does not create the reader App or change ruleset bypass settings.
 
 Two GitHub Apps are needed. Both are owned by the org/account that owns the repos and installed on the `gitops` repo only.
 
