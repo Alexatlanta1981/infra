@@ -7,7 +7,7 @@ Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops) (desired st
 ## Architecture
 
 ```
- GitHub Actions (OIDC, no AWS keys)                      AWS account 058170692253, us-east-1
+ GitHub Actions (OIDC, no AWS keys)                      AWS account <ACCOUNT_ID>, us-east-1
 ┌────────────────────────────────┐   plan / apply     ┌───────────────────────────────────────────┐
 │ terraform.yml  (envs/dev)      │──────────────────► │ VPC (public / private / database subnets) │
 │ bootstrap.yml  (envs/bootstrap)│  roles from        │ EKS 1.33 + managed nodes, IRSA roles      │
