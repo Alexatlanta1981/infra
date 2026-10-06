@@ -79,14 +79,26 @@ export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
 cd ~/devops/chris/infra
 ```
 
-1. **Create the state bucket in AWS** by following [Create the Terraform state bucket](../scripts/README.md#create-the-terraform-state-bucket) in the scripts README. Keep the exact bucket name; use it for Terraform initialization below and for `TF_STATE_BUCKET` in step 3.
+1. **Create the state bucket in AWS with script 00.** Run this once, before Terraform bootstrap and before scripts 01-06. Choose a globally unique S3 bucket name using lowercase letters, numbers, and hyphens, for example `mackllc-terraform-state-123456789012`. Replace `<STATE_BUCKET>` below with your name; do not type the angle brackets.
+   ```bash
+   cd ~/devops/chris/infra/scripts
+   ./00_create_state_bucket.sh <STATE_BUCKET>
+   ```
+   The bucket name is the script's only command argument. It uses the local `AWS_PROFILE` and `AWS_REGION` set above; this runbook's Terraform backends use `us-east-1`.
+
+   The script checks that the AWS CLI is available, gets your active AWS account ID, and displays the account, region, and bucket name. At `Create this bucket and enable versioning? [y/N]`, check the displayed information and type `y` to create the bucket, or `n` (or Enter) to cancel without changes.
+
+   After confirmation, it creates the S3 bucket, enables versioning, verifies that versioning is `Enabled`, and prints a creation report with the AWS account, region, bucket name, versioning status, and AWS `create-bucket` response. It does not run Terraform or change GitHub settings. If an AWS command fails, the script stops; a bucket already created is not automatically deleted.
+
+   **Verify:** the creation report shows versioning `Enabled`. Do not continue after cancellation or an error. Keep the exact bucket name; use it for Terraform initialization below and for `TF_STATE_BUCKET` in step 3. Do not re-run this creation script for an existing bucket.
 2. **Create the GitHub CI login in AWS.** From your `infra` folder, generate the GitHub OIDC subjects:
    ```bash
-   GITHUB_ORG=<ORG> scripts/00_oidc_subjects.sh
+   cd ~/devops/chris/infra/scripts
+   GITHUB_ORG=<ORG> ./00_oidc_subjects.sh
    ```
    Copy the JSON output. Then create the OIDC provider and two Terraform roles (plan = read-only, apply = write) from the separate `envs/bootstrap` Terraform root. Replace `<STATE_BUCKET>` and `<SUBJECTS_JSON>` with the bucket name and copied JSON; omit angle brackets. Run this once from your workstation with your SSO admin profile, not from CI:
    ```bash
-   cd envs/bootstrap
+   cd ~/devops/chris/infra/envs/bootstrap
    terraform init -backend-config="bucket=<STATE_BUCKET>"
    terraform apply -var='github_repo_subject_prefixes=<SUBJECTS_JSON>'
    ```
@@ -183,10 +195,12 @@ Do not enter the reader App values in GitHub settings. In step 7, enter its App 
 After step 5 reports EKS nodes as `Ready`, open an Ubuntu/WSL terminal and run these scripts from `~/devops/chris/infra/scripts` in order. They install the AWS Load Balancer Controller, Argo CD, External Secrets Operator, connect Argo CD to `gitops`, and configure the cluster secret store.
 
 ```bash
-cd ~/devops/chris/infra/scripts
 export GITOPS_PATH=~/devops/chris/gitops
+cd ~/devops/chris/infra/scripts
 python3 01_install_prerequisites.py     # ALB controller, Argo CD, External Secrets Operator
+cd ~/devops/chris/infra/scripts
 python3 02_bootstrap_argocd.py          # registers gitops repo (asks App ID, installation ID, key path)
+cd ~/devops/chris/infra/scripts
 python3 03_setup_external_secrets.py    # DB + JWT secrets from AWS Secrets Manager
 ```
 
@@ -249,7 +263,9 @@ After step 8 succeeds, run script 05 from `~/devops/chris/infra/scripts` in your
 
 ```bash
 export GITHUB_USERNAME=<ORG> ENV=dev
+cd ~/devops/chris/infra/scripts
 AWS_PROFILE=<AWS_SSO_PROFILE> python3 05_deploy_services.py   # creates the Argo CD apps
+cd ~/devops/chris/infra/scripts
 echo 1 | python3 06_verify_deployment.py
 ```
 
