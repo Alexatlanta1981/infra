@@ -4,6 +4,19 @@ Order matters. Run every command from a terminal (Ubuntu/WSL). Replace `<ORG>` w
 
 Repos: `infra`, `backend`, `frontend`, `gitops`, all under `<ORG>`.
 
+**How to use this:** go top to bottom. Each step ends with a **Verify** line; do not continue until it passes.
+
+| Step | What you do | Time |
+|---|---|---|
+| 0-1 | Install tools, clone repos | 10 min |
+| 2-3 | AWS state bucket + CI login roles, GitHub settings | 15 min |
+| 4-5 | Terraform builds AWS (VPC, EKS, RDS), connect kubectl | 25 min |
+| 6 | Create the two GitHub Apps (writer + reader) | 15 min |
+| 7 | Install cluster add-ons (scripts 01-03) | 10 min |
+| 8 | Build images (script 04) | 15 min |
+| 9 | Deploy and check (script 05) | 5 min |
+| 10-11 | Day-2 changes, tear down | - |
+
 ## 0. Workstation tools (once)
 
 Install: `git`, `gh`, `aws` (v2), `terraform` (>= 1.11), `kubectl`, `helm`, `yq`, `python3` (>= 3.10).
@@ -103,7 +116,7 @@ Details:
 - In the `backend` and `frontend` repos, `dev` environment: variable `GITOPS_APP_ID`, secret `GITOPS_APP_PRIVATE_KEY` (the `.pem` contents).
 - Also set in both repos: variable `GITOPS_REPO` (`<ORG>/gitops`), secret `AWS_ACCOUNT_ID`, plus the Sonar/NVD secrets.
 - For Argo CD read access, create a **separate** read-only App (Contents: read), owned by the org, installed on `gitops` only. Keep its App ID, installation ID, and a generated `.pem` for step 7.
-- Use one App per job: the writer App (CI) and the reader App (Argo CD). Do not mix their IDs or keys.
+- Never mix the writer and reader IDs or keys.
 - Find the **App ID** on the App's settings page ("About" section). Find the **installation ID** under Install App > gear icon: it is the number at the end of the URL (`.../settings/installations/<ID>`). The installation ID is never equal to the App ID.
 - Check an App/key/installation match before step 7 (prints the installation ID the key belongs to):
 
@@ -118,8 +131,6 @@ open("/tmp/jwt","wb").write(h+b"."+p+b"."+b(s))
 PY
 curl -s -H "Authorization: Bearer $(cat /tmp/jwt)" https://api.github.com/app/installations | grep '"id"' | head -1; rm /tmp/jwt
 ```
-
-> Status: workflows mint a short-lived GitHub App token (`GITOPS_APP_ID` variable + `GITOPS_APP_PRIVATE_KEY` secret). The old `GITOPS_TOKEN` is being retired.
 
 **Verify:** `gh variable list -R <ORG>/backend --env dev` shows `GITOPS_APP_ID`; `gh secret list -R <ORG>/backend --env dev` shows `GITOPS_APP_PRIVATE_KEY`. Repeat for `frontend`.
 
@@ -169,11 +180,7 @@ At the menu choose `A` (all) and confirm `Y`.
 
 **gitops push:** CI writes the image tag straight to gitops `main`. If the gitops ruleset requires PRs, add the **writer** GitHub App to the ruleset bypass list (Settings > Rules > Rulesets > Protect main > Bypass list, mode Always). Otherwise builds fail at the push step.
 
-```bash
-python3 04_run_pipeline.py              # triggers CI for chosen services (GITHUB_ORG, repos, BRANCH prompts)
-```
-
-Or one at a time:
+Or trigger one service at a time:
 
 ```bash
 gh workflow run ci-auth-service.yml -R <ORG>/backend --ref main
