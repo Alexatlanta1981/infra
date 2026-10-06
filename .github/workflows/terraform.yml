@@ -90,7 +90,7 @@ jobs:
 
       - name: Terraform Init
         id: init
-        run: terraform init
+        run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
 
       - name: Terraform Validate
         id: validate
@@ -133,7 +133,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
 
       - name: Terraform Apply
         run: |
@@ -178,7 +178,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
 
       - name: Terraform Destroy
         run: |
