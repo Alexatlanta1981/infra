@@ -40,6 +40,19 @@ cd scripts
 python3 01_install_prerequisites.py          # then 02 ... 06 in order
 ```
 
+Build and deploy with presets (replace the `<...>` values; see the runbook, step 8):
+
+```bash
+GITHUB_ORG=<GITHUB_ORG> FRONTEND_REPO=<FRONTEND_REPO> BACKEND_REPO=<BACKEND_REPO> BRANCH=<BRANCH> \
+  AWS_PROFILE=<AWS_SSO_PROFILE> python3 04_run_pipeline.py
+AWS_PROFILE=<AWS_SSO_PROFILE> python3 05_deploy_services.py
+```
+
+Notes:
+- Use the **reader** GitHub App for Argo CD (script 02) and the **writer** App for CI. The installation ID is never the App ID.
+- CI pushes image tags to gitops `main`; the writer App must be on the ruleset bypass list.
+- ECR tags are immutable (`sha-<commit>`); rebuilding the same commit needs a new commit or emptied repos.
+
 Optional presets (skip prompts or tune behavior):
 
 | Variable | Used by | Meaning |
