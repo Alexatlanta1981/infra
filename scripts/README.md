@@ -32,8 +32,8 @@ Each script prompts for what it needs, skips any prompt already set in the envir
 ## Running it
 
 ```bash
-aws sso login --profile mack-admin
-export AWS_PROFILE=mack-admin
+aws sso login --profile your-sso-profile
+export AWS_PROFILE=your-sso-profile
 aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1
 export GITOPS_PATH=~/devops/chris/gitops     # local clone of gitops
 cd scripts

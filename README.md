@@ -54,8 +54,8 @@ Everything goes through CI. Do not run `terraform apply` locally.
 After apply, connect and install the cluster components:
 
 ```bash
-aws sso login --profile mack-admin
-aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1 --profile mack-admin
+aws sso login --profile your-sso-profile
+aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1 --profile your-sso-profile
 cd scripts && python3 01_install_prerequisites.py   # then 02, 03, 04, 05, 06
 ```
 

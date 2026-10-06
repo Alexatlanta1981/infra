@@ -23,9 +23,9 @@ Install: `git`, `gh`, `aws` (v2), `terraform` (>= 1.11), `kubectl`, `helm`, `yq`
 
 ```bash
 gh auth login                      # GitHub CLI login (browser)
-aws configure sso --profile mack-admin
-aws sso login --profile mack-admin
-export AWS_PROFILE=mack-admin AWS_REGION=us-east-1
+aws configure sso --profile your-sso-profile
+aws sso login --profile your-sso-profile
+export AWS_PROFILE=your-sso-profile AWS_REGION=us-east-1
 aws sts get-caller-identity        # must show <ACCOUNT_ID>
 ```
 
