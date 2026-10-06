@@ -4,7 +4,9 @@ Order matters. Run every command from a terminal (Ubuntu/WSL). Replace `<ORG>` w
 
 Repos: `infra`, `backend`, `frontend`, `gitops`, all under `<ORG>`.
 
-**How to use this:** go top to bottom. Each step ends with a **Verify** line; do not continue until it passes.
+**How to use this:** follow the steps in order. Each step tells you where to go, what to create, and where to enter the result. Complete the **Verify** check before continuing.
+
+**Change policy:** Human changes to the repos go through pull requests; push only a working branch to open the PR, never a human commit directly to `main`. Merge only after review and required CI checks pass. Terraform changes are applied by GitHub Actions after merge, with approval in the `dev` environment. CI's automated image-tag update to `gitops` is described in step 8.
 
 | Step | What you do | Time |
 |---|---|---|
@@ -39,19 +41,25 @@ Account setup, SSO and billing are out of scope here.
 
 ## 0. Workstation tools (once)
 
-Install: `git`, `gh`, `aws` (v2), `terraform` (>= 1.11), `kubectl`, `helm`, `yq`, `python3` (>= 3.10).
+In an Ubuntu/WSL terminal, install `git`, `gh`, AWS CLI v2, Terraform >= 1.11, `kubectl`, `helm`, `yq`, and Python >= 3.10.
+
+Choose a local AWS profile name, for example `mackllc-admin`. Replace `mackllc-admin` below and anywhere else it appears with your chosen name. When `aws configure sso` prompts you, enter your IAM Identity Center start URL, SSO region, AWS account, and permission set. The profile is saved on your workstation in `~/.aws/config`; do not enter it in GitHub.
 
 ```bash
-gh auth login                      # GitHub CLI login (browser)
-aws configure sso --profile your-sso-profile
-aws sso login --profile your-sso-profile
-export AWS_PROFILE=your-sso-profile AWS_REGION=us-east-1
+gh auth login
+aws configure sso --profile mackllc-admin
+aws sso login --profile mackllc-admin
+export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
 aws sts get-caller-identity        # must show <ACCOUNT_ID>
 ```
+
+Keep using this terminal so `AWS_PROFILE` remains set. In a new terminal, run `export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1` again. AWS CLI and Terraform use this local profile.
 
 **Verify:** `git --version && gh --version && aws --version && terraform version && kubectl version --client && helm version --short && yq --version && python3 --version` all print versions. `gh auth status` says logged in.
 
 ## 1. Clone the four repos
+
+In an Ubuntu/WSL terminal, replace `<ORG>` with the GitHub username or organization that owns the four repositories. This creates four local folders under `~/devops/chris`.
 
 ```bash
 mkdir -p ~/devops/chris && cd ~/devops/chris
@@ -62,39 +70,58 @@ for r in infra backend frontend gitops; do git clone https://github.com/<ORG>/$r
 
 ## 2. One-time AWS prerequisites
 
-1. Create the Terraform state bucket (any globally unique name; you pass it to Terraform as the `TF_STATE_BUCKET` variable in step 3):
-   ```bash
-   aws s3api create-bucket --bucket <STATE_BUCKET> --region us-east-1
-   aws s3api put-bucket-versioning --bucket <STATE_BUCKET> --versioning-configuration Status=Enabled
-   ```
-2. Create the GitHub OIDC provider and the two Terraform CI roles (plan = read-only, apply = write) from the separate `envs/bootstrap` root, with admin credentials (never via CI). First generate the OIDC subjects: `GITHUB_ORG=<ORG> scripts/00_oidc_subjects.sh` (save its JSON output as `<SUBJECTS_JSON>`). Then: `cd envs/bootstrap && terraform init -backend-config="bucket=<STATE_BUCKET>" && terraform apply -var='github_repo_subject_prefixes=<SUBJECTS_JSON>'`. It has its own state, so `destroy` of `envs/dev` cannot remove CI login. Set the printed role ARNs as the `AWS_TF_PLAN_ROLE_ARN` / `AWS_TF_APPLY_ROLE_ARN` repo variables.
-3. The SSO admin role ARN is not stored in Git: set it as the repo variable `SSO_ADMIN_ROLE_ARN` (step 3; leave empty to skip).
+Run these commands in your workstation's Ubuntu/WSL terminal from `~/devops/chris/infra`. They use the AWS profile from step 0 to create the state bucket, GitHub OIDC provider, and CI roles in your AWS account. The profile name stays local; it is not a Terraform variable or GitHub setting.
 
-**Verify:** `aws s3api get-bucket-versioning --bucket <STATE_BUCKET>` shows `Enabled`; `aws iam list-open-id-connect-providers` lists `token.actions.githubusercontent.com`; `aws iam list-roles --query 'Roles[].RoleName'` shows both CI roles.
+If you opened a new terminal, set the profile again before running these commands:
+
+```bash
+export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
+cd ~/devops/chris/infra
+```
+
+1. **Create the state bucket in AWS.** Choose a globally unique name, for example `mackllc-terraform-state-123456789012`. Replace `<STATE_BUCKET>` in the commands with your chosen name (omit the angle brackets). Run the commands to create the bucket in your AWS account and enable versioning:
+   ```bash
+   aws s3api create-bucket --bucket <STATE_BUCKET> --region us-east-1 --profile "$AWS_PROFILE"
+   aws s3api put-bucket-versioning --bucket <STATE_BUCKET> --versioning-configuration Status=Enabled --profile "$AWS_PROFILE"
+   ```
+   **Keep this name.** Use the exact same bucket name in the Terraform command below and in GitHub in step 3.
+2. **Create the GitHub CI login in AWS.** From your `infra` folder, generate the GitHub OIDC subjects:
+   ```bash
+   GITHUB_ORG=<ORG> scripts/00_oidc_subjects.sh
+   ```
+   Copy the JSON output. Then create the OIDC provider and two Terraform roles (plan = read-only, apply = write) from the separate `envs/bootstrap` Terraform root. Replace `<STATE_BUCKET>` and `<SUBJECTS_JSON>` with the bucket name and copied JSON; omit angle brackets. Run this once from your workstation with your SSO admin profile, not from CI:
+   ```bash
+   cd envs/bootstrap
+   terraform init -backend-config="bucket=<STATE_BUCKET>"
+   terraform apply -var='github_repo_subject_prefixes=<SUBJECTS_JSON>'
+   ```
+   Save the plan-role and apply-role ARNs printed by Terraform. In step 3, enter them as the `AWS_TF_PLAN_ROLE_ARN` and `AWS_TF_APPLY_ROLE_ARN` repository variables. This bootstrap root has separate state, so destroying `envs/dev` will not remove the CI login.
+
+**Verify:** `aws s3api get-bucket-versioning --bucket <STATE_BUCKET> --profile "$AWS_PROFILE"` shows `Enabled`; `aws iam list-open-id-connect-providers --profile "$AWS_PROFILE"` lists `token.actions.githubusercontent.com`; `aws iam list-roles --query 'Roles[].RoleName' --profile "$AWS_PROFILE"` shows both CI roles.
 
 ## 3. GitHub settings for `infra`
 
-Settings → Secrets and variables → Actions:
+Go to GitHub.com → `<ORG>/infra` → **Settings → Secrets and variables → Actions**. For each Variable row, select **New repository variable**. For the Secret row, select **New repository secret**. Do not enter the AWS SSO profile here.
+
+**Enter the bucket name:** create a repository variable named `TF_STATE_BUCKET`. Set its value to the exact S3 bucket name you created in AWS in step 2. It must match the bucket name passed to `terraform init`.
 
 | Type | Name | Value |
 |---|---|---|
 | Variable | `GH_ORG` | `<ORG>` |
-| Variable | `TF_STATE_BUCKET` | `<STATE_BUCKET>` |
-| Variable | `AWS_TF_PLAN_ROLE_ARN` | plan role ARN |
-| Variable | `AWS_TF_APPLY_ROLE_ARN` | apply role ARN |
-| Variable | `GH_REPO_SUBJECTS` | the JSON printed by `scripts/00_oidc_subjects.sh` |
-| Variable | `SSO_ADMIN_ROLE_ARN` | your IAM Identity Center admin role ARN (`aws iam list-roles --query "Roles[?contains(RoleName,'AWSReservedSSO_')].Arn"`) |
-| Secret | `DEV_JWT_SECRET` | any long random string |
+| Variable | `TF_STATE_BUCKET` | The exact bucket name created in step 2 |
+| Variable | `AWS_TF_PLAN_ROLE_ARN` | Plan role ARN printed by Terraform in step 2 |
+| Variable | `AWS_TF_APPLY_ROLE_ARN` | Apply role ARN printed by Terraform in step 2 |
+| Variable | `GH_REPO_SUBJECTS` | The JSON printed by `scripts/00_oidc_subjects.sh` in step 2 |
+| Variable | `SSO_ADMIN_ROLE_ARN` | Your IAM Identity Center admin role ARN (leave empty to skip). To look it up, run `aws iam list-roles --query "Roles[?contains(RoleName,'AWSReservedSSO_')].Arn" --profile "$AWS_PROFILE"` in your terminal. |
+| Secret | `DEV_JWT_SECRET` | A long random string; generate one in your terminal with `openssl rand -base64 48` |
 
-Create the `dev` **environment** (Settings → Environments) with yourself as required reviewer. Apply pauses there for approval.
-
-Generate a JWT secret: `openssl rand -base64 48`
+Also create the `dev` **environment** at `<ORG>/infra` → **Settings → Environments**, and add yourself as a required reviewer. Terraform apply pauses for approval there.
 
 **Verify:** `gh variable list -R <ORG>/infra` shows the six variables; `gh secret list -R <ORG>/infra` shows `DEV_JWT_SECRET`.
 
 ## 4. Create the AWS infrastructure (Terraform, via Git)
 
-Always through a pull request, never from your laptop:
+Make infrastructure code changes in your local `infra` clone on a working branch. Push that branch and open a PR; never push directly to `main`. GitHub Actions runs the Terraform plan and CI checks. Review the plan and wait for review and required checks to pass, then merge the PR. After merge, start the apply workflow and approve it in the `dev` environment. The apply creates the VPC, EKS, RDS, ECR, IAM/IRSA roles, and secrets in AWS. Do not run Terraform apply from your workstation.
 
 ```bash
 cd ~/devops/chris/infra
@@ -105,17 +132,16 @@ git push -u origin my-change
 gh pr create --fill
 ```
 
-- The PR runs `terraform plan`. Read it.
-- Merge the PR (you, in the GitHub UI).
-- Run apply: `gh workflow run terraform.yml -R <ORG>/infra -f action=apply`, then approve it in the `dev` environment (Actions tab → the run → Review deployments).
-- This creates VPC, EKS, RDS, ECR, IAM/IRSA roles, secrets. Takes ~20 min.
+After opening the PR, review the Terraform plan and wait for required CI checks and review to pass. Merge it in GitHub. Then run `gh workflow run terraform.yml -R <ORG>/infra -f action=apply` and approve the run at **GitHub → `<ORG>/infra` → Actions → the run → Review deployments**. The apply creates VPC, EKS, RDS, ECR, IAM/IRSA roles, and secrets; it takes about 20 minutes.
 
 **Verify:** `gh run list -R <ORG>/infra --workflow terraform.yml --limit 1` shows `completed success`; `aws eks list-clusters` shows `mackllc-dev-cluster`.
 
 ## 5. Connect kubectl
 
+After the apply workflow succeeds, run these commands in your workstation's Ubuntu/WSL terminal. The first command adds EKS credentials to your local `~/.kube/config`; the second verifies access.
+
 ```bash
-aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1
+aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1 --profile "$AWS_PROFILE"
 kubectl get nodes
 ```
 
@@ -123,48 +149,43 @@ kubectl get nodes
 
 ## 6. GitHub App for CI → gitops (no personal tokens)
 
-Needed so CI can write image tags to the `gitops` repo and Argo CD can read it.
+Go to GitHub → the organization/account that owns the repos → **Settings → Developer settings → GitHub Apps**. Create two Apps and install both on the `gitops` repository only.
 
-Two Apps are needed (2 private keys total):
+1. **Writer App for CI:** Select Contents: write, Pull requests: write, and Metadata: read. Generate its private key. In step 6a, enter this App ID and key in both the `backend` and `frontend` repositories.
+2. **Reader App for Argo CD:** Create a separate App with Contents: read only. Generate a different private key. Keep its App ID, installation ID, and `.pem` file for step 7. Do not use the writer App credentials for Argo CD.
+3. Find each App ID on its settings page under **About**. Find the installation ID by opening **Install App** and selecting the gear icon. Use the number at the end of the URL (`.../settings/installations/<ID>`); it is not the App ID.
 
-| App | Permission | Credentials go in |
+### 6a. Where to put GitHub App and CI values
+
+For each repository, go to GitHub.com → `<ORG>/backend` or `<ORG>/frontend` → **Settings → Environments → dev**. Add:
+
+| Type | Name | Value to enter |
 |---|---|---|
-| Writer (CI) | Contents: **write**, Pull requests: write, Metadata: read | `backend` and `frontend` repos, `dev` environment: variable `GITOPS_APP_ID`, secret `GITOPS_APP_PRIVATE_KEY`; plus the gitops ruleset bypass list |
-| Reader (Argo CD) | Contents: **read** only | Cluster secret `gitops-repo` (namespace `argocd`) via script 02: App ID, installation ID, `.pem` path |
+| Variable | `GITOPS_APP_ID` | Writer App ID |
+| Secret | `GITOPS_APP_PRIVATE_KEY` | Entire contents of the writer App's `.pem` file |
 
-Details:
+In each repository, go to **Settings → Secrets and variables → Actions**. Select **New repository variable** or **New repository secret** as indicated:
 
-- Create the writer GitHub App with Contents: write, Pull requests: write, Metadata: read. Install it on the `gitops` repo only.
-- In the `backend` and `frontend` repos, `dev` environment: variable `GITOPS_APP_ID`, secret `GITOPS_APP_PRIVATE_KEY` (the `.pem` contents).
-- Also set in both repos: variable `GITOPS_REPO` (`<ORG>/gitops`), secret `AWS_ACCOUNT_ID`, plus the Sonar/NVD secrets.
-- For Argo CD read access, create a **separate** read-only App (Contents: read), owned by the org, installed on `gitops` only. Keep its App ID, installation ID, and a generated `.pem` for step 7.
-- Never mix the writer and reader IDs or keys.
-- Find the **App ID** on the App's settings page ("About" section). Find the **installation ID** under Install App > gear icon: it is the number at the end of the URL (`.../settings/installations/<ID>`). The installation ID is never equal to the App ID.
-- Check an App/key/installation match before step 7 (prints the installation ID the key belongs to):
-
-```bash
-python3 - <<'PY'
-import time,json,base64,subprocess
-b=lambda x:base64.urlsafe_b64encode(x).rstrip(b'=')
-h=b(json.dumps({"alg":"RS256","typ":"JWT"}).encode());n=int(time.time())
-p=b(json.dumps({"iat":n-60,"exp":n+500,"iss":"<APP_ID>"}).encode())
-s=subprocess.run(["openssl","dgst","-sha256","-sign","<PATH_TO_PEM>"],input=h+b"."+p,capture_output=True).stdout
-open("/tmp/jwt","wb").write(h+b"."+p+b"."+b(s))
-PY
-curl -s -H "Authorization: Bearer $(cat /tmp/jwt)" https://api.github.com/app/installations | grep '"id"' | head -1; rm /tmp/jwt
-```
-
-**Verify:** `gh variable list -R <ORG>/backend --env dev` shows `GITOPS_APP_ID`; `gh secret list -R <ORG>/backend --env dev` shows `GITOPS_APP_PRIVATE_KEY`. Repeat for `frontend`.
-
-### 6a. `backend` and `frontend` repo settings
-
-| Type | Name | Value |
+| Type | Name | Value to enter |
 |---|---|---|
 | Variable | `GITOPS_REPO` | `<ORG>/gitops` |
-| Secret | `AWS_ACCOUNT_ID` | your AWS account ID |
-| Secret (backend only) | `SONAR_TOKEN` | SonarCloud token; also variables `SONAR_ORG` and `SONAR_PROJECT_KEY_BACKEND` (Sonar scan is non-blocking if you skip it) |
+| Variable | `SONAR_ORG` | SonarCloud organization key |
+| Variable | `SONAR_PROJECT_KEY_BACKEND` | Backend SonarCloud project key (backend only) |
+| Variable | `SONAR_PROJECT_KEY_FRONTEND` | Frontend SonarCloud project key (frontend only) |
+| Secret | `AWS_ACCOUNT_ID` | AWS account ID |
+| Secret | `SONAR_TOKEN` | SonarCloud token; optional, scan is non-blocking if omitted |
+| Secret | `NVD_API_KEY` | NIST NVD API key (backend only; optional) |
+
+If the `gitops` main branch is protected, add the **writer App** to its ruleset bypass list: `<ORG>/gitops` → **Settings → Rules → Rulesets** → the main-branch ruleset → **Bypass list**.
+
+Do not enter the reader App values in GitHub settings. In step 7, enter its App ID and installation ID when script 02 prompts. For its private key, enter the path to the `.pem` file on your workstation. Script 02 saves these credentials in the Kubernetes secret `gitops-repo` in namespace `argocd`.
+
+
+**Verify:** `gh variable list -R <ORG>/backend --env dev` shows `GITOPS_APP_ID`; `gh secret list -R <ORG>/backend --env dev` shows `GITOPS_APP_PRIVATE_KEY`. Check repository-level values with `gh variable list -R <ORG>/backend` and `gh secret list -R <ORG>/backend`. Repeat for `frontend`.
 
 ## 7. Install cluster components (scripts, in order)
+
+After step 5 reports EKS nodes as `Ready`, open an Ubuntu/WSL terminal and run these scripts from `~/devops/chris/infra/scripts` in order. They install the AWS Load Balancer Controller, Argo CD, External Secrets Operator, connect Argo CD to `gitops`, and configure the cluster secret store.
 
 ```bash
 cd ~/devops/chris/infra/scripts
@@ -174,9 +195,13 @@ python3 02_bootstrap_argocd.py          # registers gitops repo (asks App ID, in
 python3 03_setup_external_secrets.py    # DB + JWT secrets from AWS Secrets Manager
 ```
 
-Each script prompts for values; press Enter to accept defaults. You can pre-set any prompt as an env var (e.g. `export ENV=dev`).
+The scripts prompt for any required values. When `02_bootstrap_argocd.py` prompts, enter:
 
-When `02` prompts: `GITHUB_APP_ID` = the **reader** App ID, `GITHUB_APP_INSTALLATION_ID` = its installation ID, `GITHUB_APP_KEY_PATH` = path to the reader `.pem`. A wrong value shows up later as `401 Unauthorized` / `could not refresh installation id` on every Argo CD app (sync `Unknown`, no pods).
+- The **reader App ID** for `GITHUB_APP_ID`.
+- That App's **installation ID** for `GITHUB_APP_INSTALLATION_ID`.
+- The path to that App's `.pem` file on your workstation for `GITHUB_APP_KEY_PATH`.
+
+Script 02 saves these credentials in Kubernetes secret `gitops-repo` in namespace `argocd`. Do not enter them in GitHub settings. Wrong credentials cause `401 Unauthorized` errors and Argo CD applications may remain `Unknown`.
 
 **Fix a wrong value without re-running 02:**
 
@@ -191,7 +216,7 @@ kubectl annotate applications -n argocd --all argocd.argoproj.io/refresh=hard --
 
 ## 8. Build the images
 
-Run from `infra/scripts`. Replace the `<...>` values with your own:
+In an Ubuntu/WSL terminal, run script 04 from `~/devops/chris/infra/scripts`. It triggers GitHub Actions in `backend` and `frontend`; the image builds run in those repositories, not on your workstation. Replace each placeholder with your value:
 
 ```bash
 cd ~/devops/chris/infra/scripts
@@ -225,6 +250,8 @@ ECR tags are immutable: re-running the same commit fails to push. Make a new com
 
 ## 9. Deploy and verify
 
+After step 8 succeeds, run script 05 from `~/devops/chris/infra/scripts` in your Ubuntu/WSL terminal. Replace `<ORG>` with the GitHub owner and `<AWS_SSO_PROFILE>` with the local profile name from step 0. These are command-line values; do not add them to GitHub settings. Script 05 creates the Argo CD applications in namespace `dev`.
+
 ```bash
 export GITHUB_USERNAME=<ORG> ENV=dev
 AWS_PROFILE=<AWS_SSO_PROFILE> python3 05_deploy_services.py   # creates the Argo CD apps
@@ -239,18 +266,25 @@ kubectl get pods -n dev  # all Running
 kubectl get ingress -n dev  # ADDRESS filled in
 ```
 
-Open the UI at the ingress ADDRESS (`http://<alb-hostname>/`).
+Get the load balancer hostname from the `ADDRESS` column of `kubectl get ingress -n dev`, then open `http://<alb-hostname>/`.
 
 **Verify:** `curl -s -o /dev/null -w '%{http_code}\n' http://<alb-hostname>/` prints `200`; `curl -s -o /dev/null -w '%{http_code}\n' http://<alb-hostname>/api/` prints 200, 401, 403 or 404 (not 502/503).
 
 ## 10. Day-2: shipping a change
+
+Create and push a working branch from your local `backend` clone, then open a PR in GitHub. Wait for review and required CI checks to pass before merging; never push directly to `main`. After merge, trigger the service workflow if it did not start automatically. CI builds the image and updates its tag in `gitops`.
 
 ```bash
 cd ~/devops/chris/backend
 git checkout -b feat/my-change
 git add -A && git commit -m "feat: ..."
 git push -u origin feat/my-change
-gh pr create --fill                     # merge in the UI
+gh pr create --fill
+```
+
+After CI checks pass, merge the PR in GitHub. If the build did not start automatically, trigger it after merge:
+
+```bash
 gh workflow run ci-<service>.yml -R <ORG>/backend --ref main
 ```
 
@@ -260,7 +294,11 @@ CI updates the tag in `gitops`; Argo CD syncs it. Roll back by reverting the tag
 
 ## 11. Tear down (reverse order, Terraform last)
 
+**Where:** Run the `kubectl`, `helm` and AWS commands from your workstation terminal; start the final Terraform destroy from GitHub Actions. Use the AWS SSO profile from step 0.
+
 Run each step, then its **Verify** command, before moving on. Destroying the cluster first leaves orphaned ALBs and security groups that block the VPC delete.
+
+If you opened a new terminal, run `export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1` first, replacing `mackllc-admin` with the profile name you chose in step 0.
 
 **1. Delete the Argo apps**
 ```bash
@@ -327,10 +365,6 @@ Delete the GitHub App (Settings > Developer settings > GitHub Apps) if the platf
 | CI 403 writing gitops | App not installed on `gitops` or missing Contents: write |
 
 
-## Using your own account/org
+## Using your own account or organization
 
-1. `GITHUB_ORG=<your-org> scripts/00_oidc_subjects.sh` prints JSON. Save it as repo variable `GH_REPO_SUBJECTS` (Settings > Variables) on `infra`.
-2. Set repo variable `SSO_ADMIN_ROLE_ARN` (or leave empty).
-3. Set `TF_STATE_BUCKET` (no file edit needed; the workflows pass it with `-backend-config`).
-4. Replace `@YOUR-GITHUB-USER-OR-TEAM` in each repo's `.github/CODEOWNERS`.
-5. gitops repo: nothing to edit. The account ID and org are placeholders that script 05 fills in at deploy time.
+Replace `<ORG>` with the GitHub username or organization that owns your four repositories wherever it appears in this runbook. In each local clone, replace `@YOUR-GITHUB-USER-OR-TEAM` in `.github/CODEOWNERS` with your username or team; submit the change on a branch through a PR. The preceding steps tell you where to enter the AWS and GitHub values. You do not need to add values to `gitops` by hand; script 05 fills in the account ID and organization during deployment.
