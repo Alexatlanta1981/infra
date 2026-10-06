@@ -38,8 +38,8 @@ supplier-service-6775468585-vg78s        1/1     Running   0          105m
 
 ## Ingress / ALB
 NAME          CLASS   HOSTS   ADDRESS                                                           PORTS   AGE
-api-gateway   alb     *       k8s-mackllcdev-45007e77c4-1124790171.us-east-1.elb.amazonaws.com   80      132m
-mackllc-ui     alb     *       k8s-mackllcdev-45007e77c4-1124790171.us-east-1.elb.amazonaws.com   80      102m
+api-gateway   alb     *       <ALB_HOSTNAME>   80      132m
+mackllc-ui     alb     *       <ALB_HOSTNAME>   80      102m
 
 ## ECR images
 api-gateway: 10 images

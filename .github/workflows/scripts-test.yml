@@ -86,7 +86,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: Alexatlanta1981/gitops
+          repository: ${{ github.repository_owner }}/gitops
           path: gitops
       - uses: helm/kind-action@v1
         with:
@@ -117,7 +117,7 @@ jobs:
           ALB_CONTROLLER_ROLE: arn:aws:iam::000000000000:role/test-alb
           GITOPS_PATH: ${{ github.workspace }}/gitops
           ENV: dev
-          GITOPS_REPO_URL: https://github.com/Alexatlanta1981/gitops.git
+          GITOPS_REPO_URL: https://github.com/${{ github.repository_owner }}/gitops.git
           GITHUB_APP_ID: "1"
           GITHUB_APP_INSTALLATION_ID: "2"
           GITHUB_APP_KEY_PATH: ${{ runner.temp }}/app.pem
@@ -132,7 +132,7 @@ jobs:
       - name: Script 04 (fake gh)
         env:
           PATH_PREFIX: ${{ runner.temp }}/fakebin
-          GITHUB_ORG: Alexatlanta1981
+          GITHUB_ORG: ${{ github.repository_owner }}
           FRONTEND_REPO: frontend
           BACKEND_REPO: backend
           BRANCH: main
@@ -146,7 +146,7 @@ jobs:
       - name: Script 05 (apply Argo CD Applications)
         env:
           ENV: dev
-          GITHUB_USERNAME: Alexatlanta1981
+          GITHUB_USERNAME: ${{ github.repository_owner }}
           GITOPS_PATH: ${{ github.workspace }}/gitops
           POLL_INTERVAL: "5"
           MAX_WAIT: "20"

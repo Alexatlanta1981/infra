@@ -48,7 +48,7 @@ for r in infra backend frontend gitops; do git clone https://github.com/<ORG>/$r
    aws s3api put-bucket-versioning --bucket <STATE_BUCKET> --versioning-configuration Status=Enabled
    ```
 2. Create the GitHub OIDC provider and the two Terraform CI roles (plan = read-only, apply = write) from the separate `envs/bootstrap` root, with admin credentials (never via CI): `cd envs/bootstrap && terraform init && terraform apply`. It has its own state, so `destroy` of `envs/dev` cannot remove CI login. Set the printed role ARNs as the `AWS_TF_PLAN_ROLE_ARN` / `AWS_TF_APPLY_ROLE_ARN` repo variables.
-3. Edit `envs/dev/backend.tf` (bucket) and `envs/dev/variables.tf` defaults (`github_org`, `sso_admin_role_arn`).
+3. Edit `envs/dev/backend.tf` (bucket) and the `envs/dev/variables.tf` default for `github_org`. The SSO admin role ARN is not stored in Git: set it as the repo variable `SSO_ADMIN_ROLE_ARN` (step 3; leave empty to skip).
 
 **Verify:** `aws s3api get-bucket-versioning --bucket <STATE_BUCKET>` shows `Enabled`; `aws iam list-open-id-connect-providers` lists `token.actions.githubusercontent.com`; `aws iam list-roles --query 'Roles[].RoleName'` shows both CI roles.
 
@@ -62,13 +62,14 @@ Settings → Secrets and variables → Actions:
 | Variable | `TF_STATE_BUCKET` | `<STATE_BUCKET>` |
 | Variable | `AWS_TF_PLAN_ROLE_ARN` | plan role ARN |
 | Variable | `AWS_TF_APPLY_ROLE_ARN` | apply role ARN |
+| Variable | `SSO_ADMIN_ROLE_ARN` | your IAM Identity Center admin role ARN (`aws iam list-roles --query "Roles[?contains(RoleName,'AWSReservedSSO_')].Arn"`) |
 | Secret | `DEV_JWT_SECRET` | any long random string |
 
 Create the `dev` **environment** (Settings → Environments) with yourself as required reviewer. Apply pauses there for approval.
 
 Generate a JWT secret: `openssl rand -base64 48`
 
-**Verify:** `gh variable list -R <ORG>/infra` shows the four variables; `gh secret list -R <ORG>/infra` shows `DEV_JWT_SECRET`.
+**Verify:** `gh variable list -R <ORG>/infra` shows the five variables; `gh secret list -R <ORG>/infra` shows `DEV_JWT_SECRET`.
 
 ## 4. Create the AWS infrastructure (Terraform, via Git)
 
@@ -295,3 +296,12 @@ Delete the GitHub App (Settings > Developer settings > GitHub Apps) if the platf
 | Argo CD apps `Unknown`, no pods, `401` in `kubectl describe application` | Wrong App ID / installation ID / key in `gitops-repo`; see step 7 fix |
 | `04_run_pipeline.py` HTTP 404 | Wrong `GITHUB_ORG`, repo name or `BRANCH` |
 | CI 403 writing gitops | App not installed on `gitops` or missing Contents: write |
+
+
+## Using your own account/org
+
+1. `GITHUB_ORG=<your-org> scripts/00_oidc_subjects.sh` prints JSON. Save it as repo variable `GH_REPO_SUBJECTS` (Settings > Variables) on `infra`.
+2. Set repo variable `SSO_ADMIN_ROLE_ARN` (or leave empty).
+3. Edit `bucket` in `envs/*/backend.tf` to your own state bucket.
+4. Replace `@YOUR-GITHUB-USER-OR-TEAM` in each repo's `.github/CODEOWNERS`.
+5. gitops repo: replace account ID and `repoURL` org in `envs/dev/values-*.yaml` and `argocd/` (separate gitops PR pending).
