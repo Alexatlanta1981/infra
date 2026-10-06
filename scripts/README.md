@@ -18,6 +18,8 @@ Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops), [backend](
 
 Scripts 01-06 prompt for what they need, skip prompts already satisfied by the environment, and can be re-run safely. `00_create_state_bucket.sh` is a one-time AWS bootstrap step and is not intended to be re-run after bucket creation. `00_setup_github_settings.sh` runs after Terraform bootstrap and can be re-run to verify or update GitHub settings without rotating an existing JWT secret.
 
+Script 01 does not retrieve or print the Argo CD administrator password. Use the explicit private-terminal retrieval instructions in [runbook step 7.A](../docs/DEPLOY-RUNBOOK.md#7a-install-cluster-prerequisites-script-01) only when you need UI access. Script 02 requires your own GitOps HTTPS URL through `GITOPS_REPO_URL` or its prompt; there is no personal repository default.
+
 Bucket creation, input values, confirmation, and the creation report are documented in [deployment runbook step 2](../docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites). Run script 00 there before Terraform bootstrap; run scripts 01-06 after Terraform creates the cluster.
 
 ## Step 3: set up GitHub settings (start here after Terraform bootstrap)

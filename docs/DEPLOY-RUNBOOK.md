@@ -573,6 +573,16 @@ After step 5 reports EKS nodes as `Ready`, open an Ubuntu/WSL terminal and run t
 
 ### 7.A Install cluster prerequisites (script 01)
 
+Script 01 does not retrieve or print the Argo CD administrator password. If you need the UI, retrieve the initial password explicitly in a private, unrecorded local terminal after installation:
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 --decode
+printf '\n'
+```
+
+This command displays a credential. Do not run it in CI, paste its output into a PR, or record/share that terminal. Log in as `admin`, change the password, and delete the initial secret after verifying the new login. If the initial secret no longer exists, use your configured credentials or the Argo CD password-reset procedure; do not reinstall to recover it.
+
 ```bash
 export GITOPS_PATH=~/devops/gitops
 cd ~/devops/infra/scripts
@@ -580,6 +590,8 @@ python3 01_install_prerequisites.py     # ALB controller, Argo CD, External Secr
 ```
 
 ### 7.B Connect Argo CD to gitops (script 02)
+
+Script 02 requires your own `GITOPS_REPO_URL` (or prompts for it); there is no personal repository default. An empty answer stops the script before repository registration.
 
 ```bash
 cd ~/devops/infra/scripts
