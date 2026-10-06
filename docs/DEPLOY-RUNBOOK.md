@@ -17,6 +17,16 @@ Repos: `infra`, `backend`, `frontend`, `gitops`, all under `<ORG>`.
 | 9 | Deploy and check (script 05) | 5 min |
 | 10-11 | Day-2 changes, tear down | - |
 
+## Prerequisites
+
+This runbook assumes you already have:
+
+- An **AWS account** with **IAM Identity Center (SSO)** set up and a user with administrator access to that account (permission set + account assignment).
+- A **GitHub org or user** where you can create repos, Actions variables/secrets, environments and GitHub Apps.
+- Working knowledge of Terraform, Kubernetes and GitHub Actions.
+
+Account setup, SSO and billing are out of scope here.
+
 ## 0. Workstation tools (once)
 
 Install: `git`, `gh`, `aws` (v2), `terraform` (>= 1.11), `kubectl`, `helm`, `yq`, `python3` (>= 3.10).
