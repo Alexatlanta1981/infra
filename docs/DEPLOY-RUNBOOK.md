@@ -52,13 +52,13 @@ for r in infra backend frontend gitops; do git clone https://github.com/<ORG>/$r
 
 ## 2. One-time AWS prerequisites
 
-1. Create the Terraform state bucket (name must match `envs/dev/backend.tf`):
+1. Create the Terraform state bucket (any globally unique name; you pass it to Terraform as the `TF_STATE_BUCKET` variable in step 3):
    ```bash
    aws s3api create-bucket --bucket <STATE_BUCKET> --region us-east-1
    aws s3api put-bucket-versioning --bucket <STATE_BUCKET> --versioning-configuration Status=Enabled
    ```
-2. Create the GitHub OIDC provider and the two Terraform CI roles (plan = read-only, apply = write) from the separate `envs/bootstrap` root, with admin credentials (never via CI): `cd envs/bootstrap && terraform init && terraform apply`. It has its own state, so `destroy` of `envs/dev` cannot remove CI login. Set the printed role ARNs as the `AWS_TF_PLAN_ROLE_ARN` / `AWS_TF_APPLY_ROLE_ARN` repo variables.
-3. Edit `envs/dev/backend.tf` (bucket) and the `envs/dev/variables.tf` default for `github_org`. The SSO admin role ARN is not stored in Git: set it as the repo variable `SSO_ADMIN_ROLE_ARN` (step 3; leave empty to skip).
+2. Create the GitHub OIDC provider and the two Terraform CI roles (plan = read-only, apply = write) from the separate `envs/bootstrap` root, with admin credentials (never via CI). First generate the OIDC subjects: `GITHUB_ORG=<ORG> scripts/00_oidc_subjects.sh` (save its JSON output as `<SUBJECTS_JSON>`). Then: `cd envs/bootstrap && terraform init -backend-config="bucket=<STATE_BUCKET>" && terraform apply -var='github_repo_subject_prefixes=<SUBJECTS_JSON>'`. It has its own state, so `destroy` of `envs/dev` cannot remove CI login. Set the printed role ARNs as the `AWS_TF_PLAN_ROLE_ARN` / `AWS_TF_APPLY_ROLE_ARN` repo variables.
+3. The SSO admin role ARN is not stored in Git: set it as the repo variable `SSO_ADMIN_ROLE_ARN` (step 3; leave empty to skip).
 
 **Verify:** `aws s3api get-bucket-versioning --bucket <STATE_BUCKET>` shows `Enabled`; `aws iam list-open-id-connect-providers` lists `token.actions.githubusercontent.com`; `aws iam list-roles --query 'Roles[].RoleName'` shows both CI roles.
 
@@ -72,6 +72,7 @@ Settings → Secrets and variables → Actions:
 | Variable | `TF_STATE_BUCKET` | `<STATE_BUCKET>` |
 | Variable | `AWS_TF_PLAN_ROLE_ARN` | plan role ARN |
 | Variable | `AWS_TF_APPLY_ROLE_ARN` | apply role ARN |
+| Variable | `GH_REPO_SUBJECTS` | the JSON printed by `scripts/00_oidc_subjects.sh` |
 | Variable | `SSO_ADMIN_ROLE_ARN` | your IAM Identity Center admin role ARN (`aws iam list-roles --query "Roles[?contains(RoleName,'AWSReservedSSO_')].Arn"`) |
 | Secret | `DEV_JWT_SECRET` | any long random string |
 
@@ -79,7 +80,7 @@ Create the `dev` **environment** (Settings → Environments) with yourself as re
 
 Generate a JWT secret: `openssl rand -base64 48`
 
-**Verify:** `gh variable list -R <ORG>/infra` shows the five variables; `gh secret list -R <ORG>/infra` shows `DEV_JWT_SECRET`.
+**Verify:** `gh variable list -R <ORG>/infra` shows the six variables; `gh secret list -R <ORG>/infra` shows `DEV_JWT_SECRET`.
 
 ## 4. Create the AWS infrastructure (Terraform, via Git)
 
@@ -144,6 +145,14 @@ curl -s -H "Authorization: Bearer $(cat /tmp/jwt)" https://api.github.com/app/in
 ```
 
 **Verify:** `gh variable list -R <ORG>/backend --env dev` shows `GITOPS_APP_ID`; `gh secret list -R <ORG>/backend --env dev` shows `GITOPS_APP_PRIVATE_KEY`. Repeat for `frontend`.
+
+### 6a. `backend` and `frontend` repo settings
+
+| Type | Name | Value |
+|---|---|---|
+| Variable | `GITOPS_REPO` | `<ORG>/gitops` |
+| Secret | `AWS_ACCOUNT_ID` | your AWS account ID |
+| Secret (backend only) | `SONAR_TOKEN` | SonarCloud token; also variables `SONAR_ORG` and `SONAR_PROJECT_KEY_BACKEND` (Sonar scan is non-blocking if you skip it) |
 
 ## 7. Install cluster components (scripts, in order)
 
@@ -312,6 +321,6 @@ Delete the GitHub App (Settings > Developer settings > GitHub Apps) if the platf
 
 1. `GITHUB_ORG=<your-org> scripts/00_oidc_subjects.sh` prints JSON. Save it as repo variable `GH_REPO_SUBJECTS` (Settings > Variables) on `infra`.
 2. Set repo variable `SSO_ADMIN_ROLE_ARN` (or leave empty).
-3. Edit `bucket` in `envs/*/backend.tf` to your own state bucket.
+3. Set `TF_STATE_BUCKET` (no file edit needed; the workflows pass it with `-backend-config`).
 4. Replace `@YOUR-GITHUB-USER-OR-TEAM` in each repo's `.github/CODEOWNERS`.
-5. gitops repo: replace account ID and `repoURL` org in `envs/dev/values-*.yaml` and `argocd/` (separate gitops PR pending).
+5. gitops repo: nothing to edit. The account ID and org are placeholders that script 05 fills in at deploy time.
