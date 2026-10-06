@@ -242,7 +242,11 @@ print(f"  Step 3 of 4: ExternalSecrets -> namespace '{ENV}'")
 print("--------------------------------------------")
 
 RDS_SECRET_ARN = os.environ.get("RDS_MASTER_SECRET_ARN") or run_cmd(
-    ["terraform", "-chdir=envs/dev", "output", "-raw", "rds_master_secret_arn"], capture=True)[0]
+    ["aws", "rds", "describe-db-instances", "--region", AWS_REGION,
+     "--query", f"DBInstances[?starts_with(DBInstanceIdentifier, 'mackllc-{ENV}')].MasterUserSecret.SecretArn | [0]",
+     "--output", "text"], capture=True)[0]
+if not RDS_SECRET_ARN or RDS_SECRET_ARN == "None":
+    die("Could not find the RDS master secret ARN. Set RDS_MASTER_SECRET_ARN and re-run.")
 db_external_secret = f"""\
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
