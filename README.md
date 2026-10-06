@@ -36,13 +36,15 @@ Two Terraform roots with **separate state** (bucket `chris-m-terraform-state-buk
 | `envs/dev/` | The dev environment: composes the modules below. |
 | `envs/qa/`, `envs/prod/` | Empty placeholders. |
 | `modules/` | `vpc`, `eks`, `rds`, `ecr`, `iam`, `irsa-role`, `secrets-manager`, `ci-oidc`. |
-| `scripts/` | Numbered bootstrap scripts 01-06. See [scripts/README.md](scripts/README.md). |
+| `scripts/` | AWS/GitHub setup scripts and deployment scripts 01-06. See [scripts/README.md](scripts/README.md). |
 | `.github/workflows/` | `terraform.yml`, `bootstrap.yml`, `scripts-test.yml`. |
 | `docs/` | [Deploy runbook](docs/DEPLOY-RUNBOOK.md), [study guide](docs/STUDY-GUIDE.md), [v1.0 issues](docs/V1.0-ISSUES-AND-FIXES.md), [v1.1 rewire](docs/V1.1-ENTERPRISE-REWIRE.md), [v1.2 portable release](docs/V1.2-PORTABLE.md), [v1.1 issues](docs/V1.1-ISSUES-AND-FIXES.md), [script library](docs/SCRIPT-LIBRARY.md). |
 
 ## Running it
 
-Everything goes through CI. Do not run `terraform apply` locally.
+**Setting up for the first time?** Follow the [deployment runbook](docs/DEPLOY-RUNBOOK.md) in order. After Terraform bootstrap finishes, use the [plain-language step-3 instructions](scripts/README.md#step-3-set-up-github-settings-start-here-after-terraform-bootstrap) to get the GitHub settings script locally, enter your values, run it, and verify success.
+
+Application infrastructure changes go through CI. Do not apply `envs/dev` locally. The one-time `envs/bootstrap` setup is run locally with your SSO admin profile, as explained in runbook step 2, because CI cannot sign in until its roles exist.
 
 | Action | How |
 |---|---|
