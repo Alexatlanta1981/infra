@@ -515,6 +515,8 @@ Go to GitHub → the organization/account that owns the repos → **Settings →
 
 ### 6.A Create the writer App for CI
 
+Use [the short runbook's 6.A checklist](DEPLOY-RUNBOOK.md#6a-create-or-reuse-the-writer-app-for-ci) for exact setup locations and verification. Check existing App settings first; reuse a verified writer rather than creating another.
+
 Scripted path (local onboarding, not CI): sign in with `gh auth login`. You need admin access to `backend`/`frontend`, existing `dev` environments in both, and permission to create/install Apps under your GitHub owner.
 
 ```bash
@@ -534,7 +536,7 @@ python3 00_setup_writer_app.py --credentials-dir "$HOME/.config/infra-writer-app
 
 Existing matching App IDs/keys are preserved; mismatched IDs or keys without an ID stop setup. A failure can leave the App or partial settings in place; inspect and resume rather than creating another App. The script verifies secret presence, not its encrypted value. It does not rotate keys or change the gitops ruleset bypass list (step 6.D). Writer and reader Apps remain separate.
 
-Manual alternative: select Contents: write, Pull requests: write, and Metadata: read. Generate its private key. In step 6.D, enter this App ID and key in both the `backend` and `frontend` repositories.
+Manual alternative: open the owner's **Settings → Developer settings → GitHub Apps → New GitHub App**. Enter a unique name and your infra repository URL as the homepage; disable webhooks for this token-only App. Under repository permissions select Contents: write, Pull requests: write, and Metadata: read. Create the App, record its App ID, and use **Private keys → Generate a private key**. Save the downloaded `.pem` outside Git with private permissions. Use **Install App** to install it on selected repositories: `gitops` only. In step 6.D, enter this App ID and key in both the `backend` and `frontend` repositories' `dev` environments. Verify installation scope and the environment setting names before continuing.
 
 ### 6.B Create the reader App for Argo CD
 

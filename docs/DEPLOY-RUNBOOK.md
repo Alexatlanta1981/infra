@@ -8,9 +8,10 @@ Keep SSO, STS, GitHub OIDC, and IRSA; do not use static AWS keys.
 plan/apply roles. Fresh-account onboarding is not part of this procedure.
 The bucket script creates storage only; it does not establish AWS trust.
 
-**Current checkpoint:** bootstrap and GitHub settings verified; PR plans reviewed;
-`dev` requires a reviewer and administrator bypass is disabled.
-Infrastructure apply has not been authorized by this procedure.
+**Recorded progress, 2026-10-06:** CI apply succeeded; three EKS nodes and system
+pods were verified ready. Writer App verified and reused. Next: **6.B, reader App**.
+Administrator bypass was subsequently enabled by explicit request; the reviewer
+remains configured. Use your own latest checks, not this record, for deployment.
 
 ## 0. Workstation tools (once)
 
@@ -277,7 +278,7 @@ deployment, not a fresh account; inspect your own latest plan.
 
 ## After explicit apply approval
 
-Do not run these steps yet. The full later procedure remains in
+Proceed only after your intended CI apply succeeds. The full later procedure remains in
 [the detailed deployment reference](DEPLOY-REFERENCE.md#4-create-the-aws-infrastructure-terraform-via-git).
 
 ## 5. Connect kubectl
@@ -286,12 +287,104 @@ After successful CI apply, follow [cluster access](DEPLOY-REFERENCE.md#5-connect
 
 ## 6. GitHub App for CI and Argo CD
 
-For writer-App automation, run `00_setup_writer_app.py` as described in
-[step 6.A](DEPLOY-REFERENCE.md#6a-create-the-writer-app-for-ci).
-It requires browser approval and a separate confirmation before writing CI settings.
+### 6.A Create or reuse the writer App for CI
 
-Configure separate writer/reader Apps using
-[the App instructions](DEPLOY-REFERENCE.md#6-github-app-for-ci--gitops-no-personal-tokens).
+**Check existing settings first:**
+
+```bash
+for repo in backend frontend; do
+  gh variable list -R "$GITHUB_ORG/$repo" --env dev
+  gh secret list -R "$GITHUB_ORG/$repo" --env dev
+done
+```
+
+If both have the same `GITOPS_APP_ID` and `GITOPS_APP_PRIVATE_KEY` secret name,
+verify that App below; do not create a duplicate. Secret listings do not verify
+the key's value. The script cannot adopt an existing App from its ID alone.
+
+**New App: prepare GitHub.** In both `backend` and `frontend`, open
+**Settings → Environments → New environment**, name it `dev` if absent.
+Use a GitHub login with repo admin access and permission to create Apps for the owner.
+
+**Run the script locally after its PR is merged:**
+
+```bash
+cd "$WORKSPACE/infra"
+git status --short
+```
+
+If clean, update and run:
+
+```bash
+cd "$WORKSPACE/infra"
+git switch main &&
+git pull --ff-only origin main &&
+cd scripts &&
+python3 00_setup_writer_app.py --owner "$GITHUB_ORG" \
+  --credentials-dir "$HOME/.config/infra-writer-app"
+```
+
+1. Confirm creation; enter a unique App name.
+2. Open the printed local URL in a browser on the same machine.
+3. Click **Create writer App on GitHub** and confirm the owner/name.
+4. Open the printed installation link. Choose **Only select repositories → gitops**.
+5. Return to the terminal, press Enter for verification, then confirm settings writes.
+
+The manifest sets **Contents: write, Pull requests: write, Metadata: read**.
+The script stores `GITOPS_APP_ID` as a variable and `GITOPS_APP_PRIVATE_KEY` as
+a secret in **backend/dev and frontend/dev**, not infra. It prints no key values.
+Keep its private recovery file outside Git; use `--resume` after interruptions.
+
+**Where to verify in GitHub:**
+
+- Organization owner: **organization Settings → Developer settings → GitHub Apps**.
+  Personal owner: **account Settings → Developer settings → GitHub Apps**.
+- Open the writer App. Check **App ID** and **Permissions & events** against the
+  permissions above.
+- Open **Install App → your owner → Configure**. Confirm only `gitops` is selected.
+- In each backend/frontend repo, open **Settings → Environments → dev**.
+  Verify matching App IDs and the private-key secret name; never reveal the key.
+- In `gitops`, open **Settings → Rules → Rulesets → main ruleset → Bypass list**.
+  If required for automated tag pushes, add this writer App only after approval.
+  The script does not change rulesets.
+
+Repeat the listing commands above. In each repo, also verify `GITOPS_REPO`:
+
+```bash
+for repo in backend frontend; do
+  gh variable get GITOPS_REPO -R "$GITHUB_ORG/$repo"
+done
+```
+
+Expect your `owner/gitops`. Set missing values in
+**Settings → Secrets and variables → Actions → Variables**.
+An existing CI deploy job with successful **Generate short-lived GitOps token**,
+**Checkout GitOps repo**, and **Update image tag — DEV** verifies actual use.
+Do not trigger an image build just to inspect settings.
+
+Manual creation and recovery details: [reference 6.A](DEPLOY-REFERENCE.md#6a-create-the-writer-app-for-ci).
+
+### 6.B Create or verify the reader App for Argo CD
+
+Use a **different App** with Contents: read and Metadata: read, installed on
+`gitops` only. Keep its App ID, installation ID, and private `.pem` path for script 02.
+Follow [reader setup](DEPLOY-REFERENCE.md#6b-create-the-reader-app-for-argo-cd).
+
+### 6.C Find the installation ID
+
+Open the reader App's **Install App → owner → Configure** page.
+Use the final number in its installation URL, not the App ID.
+
+### 6.D Check remaining CI settings
+
+Follow [the settings table](DEPLOY-REFERENCE.md#6d-enter-github-app-and-ci-values).
+Sonar organization/project keys and token creation instructions are deferred
+until the end; the current table lists destinations only.
+
+### 6.E Verify before Helm
+
+Writer settings and repository scope verified; reader App IDs and local private
+key available; intended cluster nodes ready. Never share keys in logs or a PR.
 
 ## 7. Install cluster components
 
