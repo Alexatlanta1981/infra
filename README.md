@@ -30,6 +30,21 @@
 
 IRSA trust subject fixed, Trivy gate and reporting steps made non-fatal, gitops push race fixed with a rebase-and-retry loop, `<ACCOUNT_ID>` placeholders filled in, ALB policy extended, and the verify script corrected to probe the real gateway routes. Full list with causes and fixes: [V1.1-ISSUES-AND-FIXES.md](docs/V1.1-ISSUES-AND-FIXES.md).
 
+### Issue: Argo CD install fails with ALB webhook x509 error
+
+**Symptom:** `helm upgrade --install argocd` fails with `failed calling webhook "mservice.elbv2.k8s.aws" ... x509: certificate signed by unknown authority ... aws-load-balancer-controller-ca`.
+
+**Why:** the AWS Load Balancer Controller registers a mutating webhook on every Service. Each `helm upgrade` of the controller regenerates its webhook CA and updates the webhook `caBundle`. The API server then rejects the cert the running pods present until they pick up the new one. The old script upgraded twice, which triggered this.
+
+**Troubleshooting steps:**
+1. Compare the CA in secret `kube-system/aws-load-balancer-tls` (`ca.crt`) with the webhook `caBundle` (`kubectl get mutatingwebhookconfiguration aws-load-balancer-webhook`). Use `openssl x509 -noout -fingerprint`.
+2. Compare the cert each controller pod serves (`kubectl port-forward` to 9443, then `openssl s_client`) with the secret's `tls.crt`.
+3. Test: `kubectl create ns t && kubectl -n t create service clusterip x --tcp=80:80`, then delete the namespace. An x509 error means the webhook is broken.
+
+**Testing done:** a restart cleared the error. A full `helm uninstall` and reinstall produced a new CA, and the secret, `caBundle` and both pods all matched, with no pod restart and a successful Service create. A fresh install is therefore fine. The failure comes from repeated upgrades. The pods have a cert watcher, so the stale-cert window is likely a timing gap (not directly reproduced).
+
+**Fix:** `scripts/01_install_prerequisites.py` installs the controller once, then runs `kubectl rollout restart` and `rollout status`, so every pod loads the current CA. Manual recovery: `kubectl -n kube-system rollout restart deploy/aws-load-balancer-controller`.
+
 ### Known gaps before go-live
 
 - Delete the old `GITOPS_TOKEN` secrets after the first build with the App token passes.
