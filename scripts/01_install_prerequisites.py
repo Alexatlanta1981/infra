@@ -10,7 +10,9 @@
 # Run from anywhere — paths are resolved relative to this script's location.
 # =============================================================================
 
+import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -40,11 +42,15 @@ def die(msg):
 # ---------------------------------------------------------------------------
 # run_cmd: run a shell command, streaming output; die on failure unless ok_fail=True
 # ---------------------------------------------------------------------------
-def run_cmd(args, ok_fail=False, capture=False):
+def run_cmd(args, ok_fail=False, capture=False, stdin_data=None):
     if capture:
         result = subprocess.run(args, capture_output=True, text=True)
+        if result.returncode != 0 and not ok_fail:
+            if result.stderr:
+                print(result.stderr.strip(), file=sys.stderr)
+            die(f"Command failed: {' '.join(str(a) for a in args)}")
         return result.stdout.strip(), result.returncode
-    result = subprocess.run(args)
+    result = subprocess.run(args, input=stdin_data, text=stdin_data is not None)
     if result.returncode != 0 and not ok_fail:
         die(f"Command failed: {' '.join(str(a) for a in args)}")
     return None, result.returncode
@@ -74,6 +80,52 @@ def prompt(var_name, label, example, default=""):
 
     log(f"  {var_name} = {value}")
     return value
+
+
+def argocd_ingress(region, account_id):
+    enabled = os.environ.get("ARGOCD_INGRESS_ENABLED", "0")
+    if enabled not in ("0", "1"):
+        die("ARGOCD_INGRESS_ENABLED must be 0 or 1.")
+    if enabled == "0":
+        return None
+    host = prompt("ARGOCD_HOSTNAME", "Argo CD DNS hostname", "argocd.example.com")
+    if len(host) > 253 or not all(
+            re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+            for label in host.split(".")):
+        die("ARGOCD_HOSTNAME must be a DNS hostname, not a URL.")
+    certificate = prompt("ARGOCD_CERTIFICATE_ARN", "ACM certificate ARN for this hostname",
+                         "arn:aws:acm:<region>:<account>:certificate/<id>")
+    if not re.fullmatch(
+            rf"arn:aws[a-z-]*:acm:{re.escape(region)}:{account_id}:certificate/[A-Za-z0-9-]+",
+            certificate):
+        die("ACM certificate must belong to the selected account and region.")
+    scheme = os.environ.get("ARGOCD_INGRESS_SCHEME", "internal")
+    if scheme not in ("internal", "internet-facing"):
+        die("ARGOCD_INGRESS_SCHEME must be internal or internet-facing.")
+    annotations = {
+        "alb.ingress.kubernetes.io/scheme": scheme,
+        "alb.ingress.kubernetes.io/target-type": "ip",
+        "alb.ingress.kubernetes.io/backend-protocol": "HTTPS",
+        "alb.ingress.kubernetes.io/listen-ports": '[{"HTTPS":443}]',
+        "alb.ingress.kubernetes.io/certificate-arn": certificate,
+        "alb.ingress.kubernetes.io/ssl-policy": "ELBSecurityPolicy-TLS13-1-2-2021-06",
+    }
+    group = os.environ.get("ARGOCD_ALB_GROUP", "")
+    if group:
+        if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]{0,61}[a-z0-9])?", group):
+            die("ARGOCD_ALB_GROUP must be 1-63 lowercase letters, numbers, dots or hyphens.")
+        annotations["alb.ingress.kubernetes.io/group.name"] = group
+    return {
+        "apiVersion": "networking.k8s.io/v1", "kind": "Ingress",
+        "metadata": {"name": "argocd-server-ingress", "namespace": "argocd",
+                     "labels": {"managed-by": "infra-bootstrap"},
+                     "annotations": annotations},
+        "spec": {"ingressClassName": "alb", "rules": [{
+            "host": host, "http": {"paths": [{
+                "path": "/", "pathType": "Prefix",
+                "backend": {"service": {"name": "argocd-server",
+                                       "port": {"number": 443}}}}]}}]},
+    }
 
 # ---------------------------------------------------------------------------
 # Verify required tools are installed
@@ -106,12 +158,21 @@ print("       (arn:aws:iam::<account-id>:role/<project>-<env>-alb-controller-irs
 print()
 
 CLUSTER_NAME        = prompt("CLUSTER_NAME",        "EKS cluster name",
-                             "mackllc-dev-cluster", "mackllc-dev-cluster")
+                             "your-project-your-env-cluster")
+configured_region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "")
+if not configured_region:
+    configured_region, _ = run_cmd(["aws", "configure", "get", "region"], capture=True,
+                                   ok_fail=True)
 AWS_REGION          = prompt("AWS_REGION",          "AWS region where the cluster is deployed",
-                             "us-east-1", "us-east-1")
+                             "your-cluster-region", configured_region)
+account_id, _ = run_cmd(["aws", "sts", "get-caller-identity", "--query", "Account",
+                        "--output", "text"], capture=True)
+if not re.fullmatch(r"[0-9]{12}", account_id):
+    die("AWS identity did not return a valid account ID.")
 ALB_CONTROLLER_ROLE = prompt("ALB_CONTROLLER_ROLE", "IAM role ARN for the AWS Load Balancer Controller",
-                             "arn:aws:iam::<aws-account-id>:role/mackllc-dev-alb-controller-irsa",
-                             "arn:aws:iam::"+subprocess.run(["aws","sts","get-caller-identity","--query","Account","--output","text"],capture_output=True,text=True).stdout.strip()+":role/mackllc-dev-alb-controller-irsa")
+                             "arn:aws:iam::<account>:role/<project>-<env>-alb-controller-irsa")
+if not re.fullmatch(rf"arn:aws[a-z-]*:iam::{account_id}:role/.+", ALB_CONTROLLER_ROLE):
+    die("ALB controller role must belong to the authenticated AWS account.")
 
 default_gitops = os.path.join(DEFAULT_PROJECT_ROOT, "gitops")
 GITOPS_PATH         = prompt("GITOPS_PATH",         "Local path to your gitops repo",
@@ -126,13 +187,16 @@ if not VPC_ID:
          "--region", AWS_REGION,
          "--query", "cluster.resourcesVpcConfig.vpcId",
          "--output", "text"],
-        capture=True, ok_fail=True,
+        capture=True,
     )
     if rc == 0 and VPC_ID and VPC_ID != "None":
         log(f"VPC ID auto-detected: {VPC_ID}")
     else:
-        VPC_ID = prompt("VPC_ID", "VPC ID where the EKS cluster runs",
-                        "vpc-xxxxxxxxxxxxxxxxx")
+        die("EKS did not return a valid VPC ID; check the cluster and region.")
+
+ARGOCD_INGRESS = argocd_ingress(AWS_REGION, account_id)
+if ARGOCD_INGRESS and os.environ.get("SKIP_ALB_CONTROLLER") == "1":
+    die("Argo CD Ingress requires the ALB controller; do not combine with SKIP_ALB_CONTROLLER.")
 
 print()
 print("  ----- Configuration Summary -----")
@@ -140,6 +204,12 @@ print(f"  Cluster          : {CLUSTER_NAME}")
 print(f"  Region           : {AWS_REGION}")
 print(f"  VPC ID           : {VPC_ID}")
 print(f"  ALB role ARN     : {ALB_CONTROLLER_ROLE}")
+print(f"  AWS account      : {account_id}")
+if ARGOCD_INGRESS:
+    print(f"  ArgoCD Ingress   : {ARGOCD_INGRESS['spec']['rules'][0]['host']}")
+    print(f"  ALB scheme       : {ARGOCD_INGRESS['metadata']['annotations']['alb.ingress.kubernetes.io/scheme']}")
+else:
+    print("  ArgoCD Ingress   : disabled (private port-forward access)")
 print("  ---------------------------------")
 print()
 confirm = input("  Proceed with installation? [Y/n]: ").strip() or "Y"
@@ -154,10 +224,7 @@ print()
 info(f"Updating kubeconfig for cluster '{CLUSTER_NAME}' in '{AWS_REGION}'...")
 _, rc = run_cmd(
     ["aws", "eks", "update-kubeconfig", "--region", AWS_REGION, "--name", CLUSTER_NAME],
-    ok_fail=True,
 )
-if rc != 0:
-    warn("kubeconfig update failed - continuing with existing context")
 
 ctx, _ = run_cmd(["kubectl", "config", "current-context"], capture=True)
 log(f"kubectl context: {ctx}")
@@ -172,7 +239,7 @@ for name, url in [
     ("external-secrets", "https://charts.external-secrets.io"),
     ("argo",             "https://argoproj.github.io/argo-helm"),
 ]:
-    run_cmd(["helm", "repo", "add", name, url, "--force-update"], ok_fail=True)
+    run_cmd(["helm", "repo", "add", name, url, "--force-update"])
 run_cmd(["helm", "repo", "update"])
 log("Helm repos updated.")
 
@@ -261,10 +328,11 @@ print("    Then open: https://localhost:8080")
 print("  ============================================================")
 print()
 
-ingress_file = os.path.join(GITOPS_PATH, "argocd/install/argocd-ingress.yaml")
-if os.path.isfile(ingress_file):
-    run_cmd(["kubectl", "apply", "-f", ingress_file])
+if ARGOCD_INGRESS:
+    run_cmd(["kubectl", "apply", "-f", "-"], stdin_data=json.dumps(ARGOCD_INGRESS))
     log("ArgoCD ingress applied.")
+else:
+    info("ArgoCD Ingress not applied. Existing Ingresses are not removed.")
 
 # ---------------------------------------------------------------------------
 # Step 3 - External Secrets Operator

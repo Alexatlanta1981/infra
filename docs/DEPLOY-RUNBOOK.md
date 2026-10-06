@@ -393,6 +393,12 @@ key available; intended cluster nodes ready. Never share keys in logs or a PR.
 Follow [script 01 and private password retrieval](DEPLOY-REFERENCE.md#7a-install-cluster-prerequisites-script-01).
 Never print credentials in CI or share terminal recordings.
 
+Supply your cluster name, region, ALB IRSA role ARN, and GitOps path; the script
+does not guess project/environment names. It uses AWS SSO and discovers the VPC.
+Argo CD Ingress is off by default (port-forward access). Enable it explicitly
+with your hostname and ACM certificate; choose the ALB scheme and optional
+group for your deployment. See step 7.A above for exact inputs.
+
 ### 7.B Connect Argo CD to gitops (script 02)
 
 Follow [script 02](DEPLOY-REFERENCE.md#7b-connect-argo-cd-to-gitops-script-02)

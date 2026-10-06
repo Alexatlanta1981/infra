@@ -189,6 +189,11 @@ Optional presets (skip prompts or tune behavior):
 | `ENV` | 02, 03 | Target environment: dev, qa or prod. |
 | `VPC_ID` | 01 | Otherwise read from the EKS cluster. |
 | `SKIP_ALB_CONTROLLER=1` | 01 | Skip the ALB controller install. |
+| `CLUSTER_NAME`, `AWS_REGION`, `ALB_CONTROLLER_ROLE` | 01 | Your deployment's cluster, region, and IRSA role. No project-specific role/cluster fallback. Region can use AWS CLI profile configuration. |
+| `ARGOCD_INGRESS_ENABLED=1` | 01 | Explicitly create Argo CD ALB Ingress; disabled by default. Existing Ingresses are not deleted. |
+| `ARGOCD_HOSTNAME`, `ARGOCD_CERTIFICATE_ARN` | 01 | Required when enabling Ingress; DNS hostname and ACM certificate in the current account/region. |
+| `ARGOCD_INGRESS_SCHEME` | 01 | `internal` by default; explicitly choose `internet-facing` for public exposure. |
+| `ARGOCD_ALB_GROUP` | 01 | Optional deliberate sharing; no group set by default. |
 | `RDS_MASTER_SECRET_ARN` | 03 | Otherwise looked up from RDS. |
 | `POLL_INTERVAL`, `MAX_WAIT` | 04 | Build polling (default 30 s, 30 min). |
 | `TRIGGER_DELAY` | 04 | Seconds between workflow triggers. |

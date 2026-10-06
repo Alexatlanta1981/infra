@@ -50,6 +50,7 @@ jobs:
           AWS_ACCESS_KEY_ID: dummy
           AWS_SECRET_ACCESS_KEY: dummy
           SKIP_ALB_CONTROLLER: "1"
+          EXPECTED_KIND_CONTEXT: kind-smoke
           CLUSTER_NAME: smoke
           VPC_ID: vpc-00000000
           ALB_CONTROLLER_ROLE: arn:aws:iam::000000000000:role/test-alb
@@ -63,6 +64,10 @@ jobs:
           ESO_ROLE_NAME: test-eso
           RDS_MASTER_SECRET_ARN: arn:aws:secretsmanager:us-east-1:000000000000:secret:rds!db-test
         run: |
+          mkdir -p "$RUNNER_TEMP/aws-kind-bin"
+          cp scripts/tests/aws_kind_mock.sh "$RUNNER_TEMP/aws-kind-bin/aws"
+          chmod +x "$RUNNER_TEMP/aws-kind-bin/aws"
+          export PATH="$RUNNER_TEMP/aws-kind-bin:$PATH"
           mkdir -p "$GITOPS_PATH"
           openssl genrsa -out "$GITHUB_APP_KEY_PATH" 2048
           echo Y | python3 scripts/01_install_prerequisites.py
@@ -120,6 +125,7 @@ jobs:
           AWS_ACCESS_KEY_ID: dummy
           AWS_SECRET_ACCESS_KEY: dummy
           SKIP_ALB_CONTROLLER: "1"
+          EXPECTED_KIND_CONTEXT: kind-apptest
           CLUSTER_NAME: apptest
           VPC_ID: vpc-00000000
           ALB_CONTROLLER_ROLE: arn:aws:iam::000000000000:role/test-alb
@@ -133,6 +139,10 @@ jobs:
           ESO_ROLE_NAME: test-eso
           RDS_MASTER_SECRET_ARN: arn:aws:secretsmanager:us-east-1:000000000000:secret:rds!db-test
         run: |
+          mkdir -p "$RUNNER_TEMP/aws-kind-bin"
+          cp scripts/tests/aws_kind_mock.sh "$RUNNER_TEMP/aws-kind-bin/aws"
+          chmod +x "$RUNNER_TEMP/aws-kind-bin/aws"
+          export PATH="$RUNNER_TEMP/aws-kind-bin:$PATH"
           openssl genrsa -out "$GITHUB_APP_KEY_PATH" 2048
           echo Y | python3 scripts/01_install_prerequisites.py
           echo Y | python3 scripts/02_bootstrap_argocd.py

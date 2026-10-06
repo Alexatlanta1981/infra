@@ -596,6 +596,46 @@ After step 5 reports EKS nodes as `Ready`, open an Ubuntu/WSL terminal and run t
 
 ### 7.A Install cluster prerequisites (script 01)
 
+Set inputs for **your deployment** before running script 01. Get the cluster
+name from your CI Terraform outputs and the ALB IRSA role ARN from your deployed
+IAM resources; do not assume another project's names.
+
+```bash
+export CLUSTER_NAME=your-cluster-name
+export AWS_REGION=your-cluster-region
+export ALB_CONTROLLER_ROLE=your-alb-controller-iam-role-arn
+export GITOPS_PATH="$WORKSPACE/gitops"
+cd "$WORKSPACE/infra/scripts"
+python3 01_install_prerequisites.py
+```
+
+Unset values prompt; region can default to your AWS CLI profile's configured
+region. The script uses your SSO identity, checks the role's account, and discovers
+the VPC from EKS unless supplied. Failed AWS reads or kubeconfig updates stop
+installation rather than using a stale cluster. SSO, STS, and IRSA remain unchanged.
+
+**Argo CD Ingress is disabled by default.** Access the UI using
+`kubectl -n argocd port-forward svc/argocd-server 8080:443`.
+The script no longer auto-applies the GitOps checkout's fixed Ingress manifest.
+It does not remove an existing Ingress.
+
+For an explicitly approved ALB endpoint, set these before running:
+
+```bash
+export ARGOCD_INGRESS_ENABLED=1
+export ARGOCD_HOSTNAME=argocd.your-domain.example
+export ARGOCD_CERTIFICATE_ARN=your-acm-certificate-arn
+export ARGOCD_INGRESS_SCHEME=internal
+```
+
+Use an issued ACM certificate for the hostname, in the selected account/region,
+and configure DNS to the resulting ALB yourself. Certificate validity, domain
+coverage and DNS are operator prerequisites; the script checks ARN account/region
+but does not create a certificate or DNS record. `internet-facing` must be explicitly
+selected for public exposure and incurs ALB charges. No ALB group is set by default,
+preventing accidental grouping; set `ARGOCD_ALB_GROUP` only for deliberate sharing.
+Review hostname and scheme in the installation summary before confirmation.
+
 Script 01 does not retrieve or print the Argo CD administrator password. If you need the UI, retrieve the initial password explicitly in a private, unrecorded local terminal after installation:
 
 ```bash
@@ -607,9 +647,7 @@ printf '\n'
 This command displays a credential. Do not run it in CI, paste its output into a PR, or record/share that terminal. Log in as `admin`, change the password, and delete the initial secret after verifying the new login. If the initial secret no longer exists, use your configured credentials or the Argo CD password-reset procedure; do not reinstall to recover it.
 
 ```bash
-export GITOPS_PATH=~/devops/gitops
-cd ~/devops/infra/scripts
-python3 01_install_prerequisites.py     # ALB controller, Argo CD, External Secrets Operator
+# Run script 01 above once with your deployment inputs.
 ```
 
 ### 7.B Connect Argo CD to gitops (script 02)
