@@ -44,6 +44,99 @@ Two Terraform roots with **separate state** (bucket `chris-m-terraform-state-buk
 
 **Setting up for the first time?** Follow the [deployment runbook](docs/DEPLOY-RUNBOOK.md) in order. After Terraform bootstrap finishes, use the [plain-language step-3 instructions](scripts/README.md#step-3-set-up-github-settings-start-here-after-terraform-bootstrap) to get the GitHub settings script locally, enter your values, run it, and verify success.
 
+### Step 3: get and run the GitHub settings script
+
+**Already deployed or recovering missing outputs?** Keep the existing state bucket, `chris-m-terraform-state-buk01`, and follow the [existing-state checks and recovery instructions](docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites) first. Do not create a replacement bucket or apply an import/create plan merely because local outputs are missing.
+
+Follow these commands in order, in the same Ubuntu/WSL terminal. Terraform bootstrap (runbook step 2) must have completed, and the script's PR must be merged into `main`. A merged PR does **not** automatically update files on your laptop.
+
+**3.A Check your local checkout before updating**
+
+```bash
+cd ~/devops/chris/infra
+git status --short
+```
+
+Expected output: nothing. If any changed or untracked files are listed, **stop and preserve those changes** before continuing. Do not delete them, reset the repository, or force a branch switch.
+
+**3.B Switch to main, download the merged changes, and check the file**
+
+```bash
+cd ~/devops/chris/infra
+git switch main &&
+git pull --ff-only origin main &&
+ls scripts/00_setup_github_settings.sh
+```
+
+Expected final output:
+
+```text
+scripts/00_setup_github_settings.sh
+```
+
+If switching or pulling fails, or the file is missing, stop. Check the error, repository, and PR merge status before proceeding.
+
+**3.C Find your AWS profile and enter your inputs**
+
+```bash
+aws configure list-profiles
+```
+
+Choose the same profile used for Terraform bootstrap. Replace `your-sso-profile`, `your-github-owner`, and `your-existing-state-bucket` in the commands below. The GitHub owner is a name such as `Alexatlanta1981`, not a URL. The bucket is the one already created in step 2.
+
+```bash
+export AWS_PROFILE=your-sso-profile
+export AWS_REGION=us-east-1
+export GITHUB_ORG=your-github-owner
+export STATE_BUCKET=your-existing-state-bucket
+```
+
+**3.D Sign in and verify both accounts**
+
+```bash
+aws sso login --profile "$AWS_PROFILE" &&
+aws sts get-caller-identity --profile "$AWS_PROFILE" &&
+gh auth status
+```
+
+Check that `Account` is your intended AWS account. The GitHub account shown becomes the required deployment reviewer. If GitHub is not signed in, run `gh auth login`, then repeat `gh auth status`. Stop if either account is wrong or authentication fails.
+
+**3.E Verify Terraform bootstrap outputs**
+
+```bash
+cd ~/devops/chris/infra/envs/bootstrap
+terraform output
+```
+
+Expect both `terraform_plan_role_arn` and `terraform_apply_role_arn` with your actual role ARNs. If either is missing or Terraform reports an error, stop and finish runbook step 2. The script reads these values automatically; do not paste JSON or role ARNs into its command.
+
+**3.F Run the script**
+
+```bash
+cd ~/devops/chris/infra/scripts
+./00_setup_github_settings.sh
+```
+
+Inside this directory, use `./00_setup_github_settings.sh`, **not** `scripts/00_setup_github_settings.sh`.
+
+- At the SSO admin role prompt, enter your full IAM role ARN to configure EKS admin access. Press Enter to preserve an existing value or skip it if none exists. Skipping does not grant cluster access.
+- To find the role ARN, use another terminal with your actual profile:
+  ```bash
+  aws iam list-roles --profile your-sso-profile --query "Roles[?contains(RoleName,'AWSReservedSSO_')].Arn" --output json
+  ```
+  Choose the admin role associated with your profile. Use its `arn:aws:iam::...:role/...` value, not an STS assumed-role ARN.
+- At `Apply these GitHub settings? [y/N]`, check the repository, reviewer, bucket, and roles. Type `y` only when they are correct. Enter or `n` cancels without changes.
+
+**3.G Check the completion message**
+
+The script lists saved variables, secret names (never secret values), and environment protection settings. Success ends with:
+
+```text
+Setup complete. No workflows were dispatched, commits pushed, or PRs merged.
+```
+
+Only then continue to runbook step 4. If an error appears, stop and inspect it; some settings may already have changed. The script preserves an existing JWT secret and does not deploy AWS resources. Required-reviewer support depends on GitHub permissions, plan, and repository visibility; do not bypass an environment-protection failure.
+
 Application infrastructure changes go through CI. Do not apply `envs/dev` locally. The one-time `envs/bootstrap` setup is run locally with your SSO admin profile, as explained in runbook step 2, because CI cannot sign in until its roles exist.
 
 | Action | How |

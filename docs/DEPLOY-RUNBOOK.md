@@ -134,7 +134,33 @@ export AWS_PROFILE=mackllc-admin AWS_REGION=us-east-1
 cd ~/devops/chris/infra
 ```
 
-### 2.B Create and verify the state bucket
+### 2.B Select the existing state bucket, or create one for a fresh setup
+
+**Existing deployment: do not create another bucket.** First read the bucket already configured for CI:
+
+```bash
+cd ~/devops/chris/infra
+export GITHUB_ORG=your-github-owner
+STATE_BUCKET=$(gh variable get TF_STATE_BUCKET --repo "$GITHUB_ORG/infra") &&
+export STATE_BUCKET &&
+printf 'Existing state bucket: %s\n' "$STATE_BUCKET"
+```
+
+If the variable is missing, empty, or points to an unexpected bucket, stop and inspect the existing deployment and backend before creating anything. Missing local Terraform outputs do not prove that AWS resources or remote state are missing.
+
+For this repository's recovered deployment, the existing bucket is `chris-m-terraform-state-buk01` in `us-east-1`. Keep both `envs/bootstrap/terraform.tfstate` and `envs/dev/terraform.tfstate` there. A new empty bucket hides the existing state from Terraform; it does not move state or make existing IAM resources new.
+
+Verify the selected bucket and state objects without displaying state contents:
+
+```bash
+aws s3api get-bucket-versioning --bucket "${STATE_BUCKET:?Set STATE_BUCKET}" &&
+aws s3api head-object --bucket "$STATE_BUCKET" --key envs/bootstrap/terraform.tfstate &&
+aws s3api head-object --bucket "$STATE_BUCKET" --key envs/dev/terraform.tfstate
+```
+
+Expect versioning `Enabled` and metadata for both state objects. Stop on an error. Skip bucket creation and follow step 2.C, then the existing-deployment instructions in step 2.D.
+
+**Fresh setup only:** use the creation script below after confirming there is no existing state or deployment to preserve.
 
 Run this once, before Terraform bootstrap and before scripts 01-06. Choose a globally unique S3 bucket name using lowercase letters, numbers, and hyphens, for example `mackllc-terraform-state-123456789012`. Set `STATE_BUCKET` to your chosen name, without angle brackets:
    ```bash
@@ -190,6 +216,19 @@ Replace `your-github-owner` below with the owner of all four repositories (for e
    **Verify:** all four entries, including `infra`, are present. This JSON is not bucket information and does not go into script 00. It is the value of Terraform's `github_repo_subject_prefixes` variable and, later, GitHub's `GH_REPO_SUBJECTS` repository variable. Use the real output, not the sample above. If the script fails, stop and check `gh auth status`, the owner, and access to all four repos.
 
 ### 2.D Initialize and apply Terraform bootstrap
+
+**Existing deployment: verify, do not repeat the first-time apply.** Use the bucket identified in step 2.B and the subjects generated in step 2.C:
+
+```bash
+cd ~/devops/chris/infra/envs/bootstrap
+terraform init -backend-config="bucket=${STATE_BUCKET:?Set STATE_BUCKET}" &&
+terraform output &&
+terraform plan -var="github_repo_subject_prefixes=${SUBJECTS_JSON:?Generate SUBJECTS_JSON in step 2}"
+```
+
+Expect both role ARNs and, for an unchanged bootstrap, `No changes. Your infrastructure matches the configuration.` If initialization reports a backend change, follow the recovery guidance below first. If the plan unexpectedly proposes creating or importing existing IAM roles or the OIDC provider, stop and check the selected state bucket. Do not approve that plan. Once the existing outputs are verified, continue to step 3; subsequent changes go through a PR and CI.
+
+**Fresh setup only:** the following local apply is needed only before CI roles exist.
 
 Run from `envs/bootstrap`, not the repository root and not `scripts`. The root `infra` folder has no Terraform configuration. Before applying, display the working directory and saved inputs:
    ```bash
@@ -249,7 +288,16 @@ Run from `envs/bootstrap`, not the repository root and not `scripts`. The root `
   terraform init -reconfigure -backend-config="bucket=${STATE_BUCKET:?Set STATE_BUCKET}"
   ```
 - If resources were already managed using the old backend, stop and review both state locations. Back up existing state and use `terraform init -migrate-state` only when intentionally moving that state. `-reconfigure` does not migrate it.
+- If the local backend accidentally points at a new empty bucket, but the original remote state is verified and backed up, reconnect to the original bucket without migrating:
+  ```bash
+  cd ~/devops/chris/infra/envs/bootstrap
+  terraform init -reconfigure -backend-config="bucket=${STATE_BUCKET:?Set STATE_BUCKET to the verified original bucket}" &&
+  terraform output
+  ```
+  Check the dev backend separately from `~/devops/chris/infra/envs/dev` using the same verified bucket. Keep the two roots' distinct state keys. Ensure GitHub's `TF_STATE_BUCKET` also uses that bucket. Re-set `STATE_BUCKET` in any terminal that still has the wrong value.
 - If you are unsure, stop and establish where the existing state is before choosing either option.
+
+Before any intentional migration or bucket deletion, make a private backup outside the repository of current state, historical object versions, and delete-marker metadata. Check the downloaded files' checksums and keep a manifest mapping keys and version IDs to backup files. State can contain secrets: never commit it or attach it to a PR. Versioned buckets can retain old versions and delete markers even when an object listing looks empty; do not force-delete them to fix missing Terraform outputs.
 
 **`No valid credential sources found`, `InvalidGrantException`, or cached SSO token refresh failed:** sign in again and verify the account before retrying initialization. Replace the profile example with your configured profile:
 
