@@ -38,7 +38,7 @@ Two Terraform roots with **separate state** (bucket `chris-m-terraform-state-buk
 | `modules/` | `vpc`, `eks`, `rds`, `ecr`, `iam`, `irsa-role`, `secrets-manager`, `ci-oidc`. |
 | `scripts/` | Numbered bootstrap scripts 01-06. See [scripts/README.md](scripts/README.md). |
 | `.github/workflows/` | `terraform.yml`, `bootstrap.yml`, `scripts-test.yml`. |
-| `docs/` | [Deploy runbook](docs/DEPLOY-RUNBOOK.md), [study guide](docs/STUDY-GUIDE.md), [v1.0 issues](docs/V1.0-ISSUES-AND-FIXES.md), [v1.1 rewire](docs/V1.1-ENTERPRISE-REWIRE.md), [v1.1 issues](docs/V1.1-ISSUES-AND-FIXES.md), [script library](docs/SCRIPT-LIBRARY.md). |
+| `docs/` | [Deploy runbook](docs/DEPLOY-RUNBOOK.md), [study guide](docs/STUDY-GUIDE.md), [v1.0 issues](docs/V1.0-ISSUES-AND-FIXES.md), [v1.1 rewire](docs/V1.1-ENTERPRISE-REWIRE.md), [v1.2 portable release](docs/V1.2-PORTABLE.md), [v1.1 issues](docs/V1.1-ISSUES-AND-FIXES.md), [script library](docs/SCRIPT-LIBRARY.md). |
 
 ## Running it
 
@@ -54,8 +54,8 @@ Everything goes through CI. Do not run `terraform apply` locally.
 After apply, connect and install the cluster components:
 
 ```bash
-aws sso login --profile mack-admin
-aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1 --profile mack-admin
+aws sso login --profile your-sso-profile
+aws eks update-kubeconfig --name mackllc-dev-cluster --region us-east-1 --profile your-sso-profile
 cd scripts && python3 01_install_prerequisites.py   # then 02, 03, 04, 05, 06
 ```
 

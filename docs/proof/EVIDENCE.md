@@ -2,7 +2,7 @@
 
 ## CI/CD run (GitHub Actions)
 CI/CD — api-gateway | branch=main | workflow_dispatch | success | 2026-10-04T22:03:47Z
-https://github.com/Alexatlanta1981/backend/actions/runs/37238554778
+https://github.com/your-org/backend/actions/runs/<RUN_ID>
   job: Build & Security Gates (api-gateway) / Build · SAST · Scan · Push · Sign (api-gateway) -> success
   job: 🚀 Deploy api-gateway → DEV -> success
 
