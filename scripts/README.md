@@ -65,9 +65,9 @@ Full procedure and teardown: [DEPLOY-RUNBOOK](../docs/DEPLOY-RUNBOOK.md). Refere
 
 ## Testing and branch protection
 
-The scripts are developed on a dedicated, protected branch: **`ci/bootstrap-script-tests`**. Work happens there, is tested automatically, then merges to `main`.
+Script changes go through a pull request to **`main`**. CI tests them automatically before they merge. (The old `ci/bootstrap-script-tests` branch is stale and no longer used.)
 
-**Branch protection** (ruleset "Protect scripts branch"): no deletion, no force-push, changes only via pull request, and these checks must pass with the branch up to date:
+**Checks on every script PR:**
 
 | Required check | What it does |
 |---|---|
@@ -80,11 +80,11 @@ Defined in `.github/workflows/scripts-test.yml`. It runs on any PR or push to `m
 **Workflow to change a script:**
 
 ```bash
-git fetch origin && git checkout -b fix/my-script-change origin/ci/bootstrap-script-tests
+git fetch origin && git checkout -b fix/my-script-change origin/main
 # edit scripts/...
 git add -A && git commit -m "fix(script): ..."
 git push -u origin fix/my-script-change
-gh pr create --base ci/bootstrap-script-tests --fill   # wait for 3 green checks, merge in the UI
+gh pr create --base main --fill   # wait for 3 green checks, merge in the UI
 ```
 
 ## Known gaps

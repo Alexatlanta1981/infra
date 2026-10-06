@@ -241,12 +241,29 @@ print("--------------------------------------------")
 print(f"  Step 3 of 4: ExternalSecrets -> namespace '{ENV}'")
 print("--------------------------------------------")
 
-RDS_SECRET_ARN = os.environ.get("RDS_MASTER_SECRET_ARN") or run_cmd(
-    ["aws", "rds", "describe-db-instances", "--region", AWS_REGION,
-     "--query", f"DBInstances[?starts_with(DBInstanceIdentifier, 'mackllc-{ENV}')].MasterUserSecret.SecretArn | [0]",
-     "--output", "text"], capture=True)[0]
-if not RDS_SECRET_ARN or RDS_SECRET_ARN == "None":
-    die("Could not find the RDS master secret ARN. Set RDS_MASTER_SECRET_ARN and re-run.")
+def lookup_rds_secret_arn(db_id, region, attempts=6, delay=10):
+    # Exact instance name; retry until the managed secret is active.
+    err = ""
+    for n in range(1, attempts + 1):
+        r = subprocess.run(
+            ["aws", "rds", "describe-db-instances", "--region", region,
+             "--db-instance-identifier", db_id,
+             "--query", "DBInstances[0].MasterUserSecret.[SecretArn,SecretStatus]",
+             "--output", "text"], capture_output=True, text=True)
+        out = r.stdout.split()
+        if r.returncode == 0 and len(out) == 2 and out[1] == "active":
+            return out[0]
+        err = r.stderr.strip() or f"secret not ready (got: {r.stdout.strip() or 'nothing'})"
+        if any(k in err for k in ("AccessDenied", "ExpiredToken", "DBInstanceNotFound",
+                                   "Token has expired", "Unable to locate credentials")):
+            break
+        info(f"RDS secret lookup attempt {n}/{attempts} failed: {err}")
+        time.sleep(delay)
+    die(f"Could not get the RDS master secret ARN for '{db_id}': {err}\n"
+        "Set RDS_MASTER_SECRET_ARN to override.")
+
+RDS_SECRET_ARN = os.environ.get("RDS_MASTER_SECRET_ARN") or lookup_rds_secret_arn(
+    os.environ.get("RDS_INSTANCE_ID", f"mackllc-{ENV}-postgres"), AWS_REGION)
 db_external_secret = f"""\
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
