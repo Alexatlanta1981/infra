@@ -32,6 +32,7 @@ permissions:
 env:
   TF_VERSION: '1.15.6'
   AWS_REGION: us-east-1
+  TF_VAR_github_repo_subject_prefixes: ${{ vars.GH_REPO_SUBJECTS }}
 
 # Prevent parallel runs on the same branch — avoids state conflicts
 concurrency:
@@ -100,6 +101,7 @@ jobs:
           terraform plan \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
             -var="github_org=${{ vars.GH_ORG }}" \
+            -var="sso_admin_role_arn=${{ vars.SSO_ADMIN_ROLE_ARN }}" \
             -no-color
 
   # ── Apply ─────────────────────────────────────────────────────────────────
@@ -138,6 +140,7 @@ jobs:
           terraform apply \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
             -var="github_org=${{ vars.GH_ORG }}" \
+            -var="sso_admin_role_arn=${{ vars.SSO_ADMIN_ROLE_ARN }}" \
             -auto-approve \
             -no-color
 
@@ -182,6 +185,7 @@ jobs:
           terraform destroy \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
             -var="github_org=${{ vars.GH_ORG }}" \
+            -var="sso_admin_role_arn=${{ vars.SSO_ADMIN_ROLE_ARN }}" \
             -auto-approve \
             -no-color
 
