@@ -90,10 +90,34 @@ kubectl get nodes
 
 Needed so CI can write image tags to the `gitops` repo and Argo CD can read it.
 
-- Create a GitHub App with Contents: write, Pull requests: write, Metadata: read. Install it on the `gitops` repo only.
+Two Apps are needed (2 private keys total):
+
+| App | Permission | Credentials go in |
+|---|---|---|
+| Writer (CI) | Contents: **write**, Pull requests: write, Metadata: read | `backend` and `frontend` repos, `dev` environment: variable `GITOPS_APP_ID`, secret `GITOPS_APP_PRIVATE_KEY`; plus the gitops ruleset bypass list |
+| Reader (Argo CD) | Contents: **read** only | Cluster secret `gitops-repo` (namespace `argocd`) via script 02: App ID, installation ID, `.pem` path |
+
+Details:
+
+- Create the writer GitHub App with Contents: write, Pull requests: write, Metadata: read. Install it on the `gitops` repo only.
 - In the `backend` and `frontend` repos, `dev` environment: variable `GITOPS_APP_ID`, secret `GITOPS_APP_PRIVATE_KEY` (the `.pem` contents).
 - Also set in both repos: variable `GITOPS_REPO` (`<ORG>/gitops`), secret `AWS_ACCOUNT_ID`, plus the Sonar/NVD secrets.
-- For Argo CD read access, create a read-only App (Contents: read) and keep its App ID, installation ID, and `.pem` for step 7.
+- For Argo CD read access, create a **separate** read-only App (Contents: read), owned by the org, installed on `gitops` only. Keep its App ID, installation ID, and a generated `.pem` for step 7.
+- Use one App per job: the writer App (CI) and the reader App (Argo CD). Do not mix their IDs or keys.
+- Find the **App ID** on the App's settings page ("About" section). Find the **installation ID** under Install App > gear icon: it is the number at the end of the URL (`.../settings/installations/<ID>`). The installation ID is never equal to the App ID.
+- Check an App/key/installation match before step 7 (prints the installation ID the key belongs to):
+
+```bash
+python3 - <<'PY'
+import time,json,base64,subprocess
+b=lambda x:base64.urlsafe_b64encode(x).rstrip(b'=')
+h=b(json.dumps({"alg":"RS256","typ":"JWT"}).encode());n=int(time.time())
+p=b(json.dumps({"iat":n-60,"exp":n+500,"iss":"<APP_ID>"}).encode())
+s=subprocess.run(["openssl","dgst","-sha256","-sign","<PATH_TO_PEM>"],input=h+b"."+p,capture_output=True).stdout
+open("/tmp/jwt","wb").write(h+b"."+p+b"."+b(s))
+PY
+curl -s -H "Authorization: Bearer $(cat /tmp/jwt)" https://api.github.com/app/installations | grep '"id"' | head -1; rm /tmp/jwt
+```
 
 > Status: workflows mint a short-lived GitHub App token (`GITOPS_APP_ID` variable + `GITOPS_APP_PRIVATE_KEY` secret). The old `GITOPS_TOKEN` is being retired.
 
@@ -111,9 +135,39 @@ python3 03_setup_external_secrets.py    # DB + JWT secrets from AWS Secrets Mana
 
 Each script prompts for values; press Enter to accept defaults. You can pre-set any prompt as an env var (e.g. `export ENV=dev`).
 
+When `02` prompts: `GITHUB_APP_ID` = the **reader** App ID, `GITHUB_APP_INSTALLATION_ID` = its installation ID, `GITHUB_APP_KEY_PATH` = path to the reader `.pem`. A wrong value shows up later as `401 Unauthorized` / `could not refresh installation id` on every Argo CD app (sync `Unknown`, no pods).
+
+**Fix a wrong value without re-running 02:**
+
+```bash
+kubectl -n argocd patch secret gitops-repo --type merge -p \
+  "{\"data\":{\"githubAppID\":\"$(printf '<APP_ID>' | base64)\",\"githubAppInstallationID\":\"$(printf '<INSTALLATION_ID>' | base64)\",\"githubAppPrivateKey\":\"$(base64 -w0 <PATH_TO_PEM>)\"}}"
+kubectl -n argocd rollout restart deploy argocd-repo-server
+kubectl annotate applications -n argocd --all argocd.argoproj.io/refresh=hard --overwrite
+```
+
 **Verify:** `kubectl get pods -n argocd` and `-n external-secrets` and `-n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller` are all `Running`; `kubectl get clustersecretstore` shows `Valid`; `kubectl get externalsecret -A` shows `SecretSynced`.
 
 ## 8. Build the images
+
+Run from `infra/scripts`. Replace the `<...>` values with your own:
+
+```bash
+cd ~/devops/chris/infra/scripts
+GITHUB_ORG=<GITHUB_ORG> FRONTEND_REPO=<FRONTEND_REPO> BACKEND_REPO=<BACKEND_REPO> BRANCH=<BRANCH> \
+  AWS_PROFILE=<AWS_SSO_PROFILE> python3 04_run_pipeline.py
+```
+
+| Value | What to put | Notes |
+|---|---|---|
+| `<GITHUB_ORG>` | GitHub user or org that owns the repos | The script default (`mackllc`) is only an example; a wrong owner gives HTTP 404 |
+| `<FRONTEND_REPO>` / `<BACKEND_REPO>` | Repo names only, not `owner/name` | e.g. `frontend`, `backend` |
+| `<BRANCH>` | Branch that exists in **both** repos | Check with `gh api repos/<ORG>/<REPO>/branches`; the default `develop` may not exist |
+| `<AWS_SSO_PROFILE>` | Your AWS CLI profile | Run `aws sso login --profile <AWS_SSO_PROFILE>` first |
+
+At the menu choose `A` (all) and confirm `Y`.
+
+**gitops push:** CI writes the image tag straight to gitops `main`. If the gitops ruleset requires PRs, add the **writer** GitHub App to the ruleset bypass list (Settings > Rules > Rulesets > Protect main > Bypass list, mode Always). Otherwise builds fail at the push step.
 
 ```bash
 python3 04_run_pipeline.py              # triggers CI for chosen services (GITHUB_ORG, repos, BRANCH prompts)
@@ -136,7 +190,7 @@ ECR tags are immutable: re-running the same commit fails to push. Make a new com
 
 ```bash
 export GITHUB_USERNAME=<ORG> ENV=dev
-python3 05_deploy_services.py           # creates the Argo CD apps
+AWS_PROFILE=<AWS_SSO_PROFILE> python3 05_deploy_services.py   # creates the Argo CD apps
 echo 1 | python3 06_verify_deployment.py
 ```
 
@@ -230,4 +284,7 @@ Delete the GitHub App (Settings > Developer settings > GitHub Apps) if the platf
 | Pod CrashLoop | `kubectl logs <pod> -n dev --previous` |
 | ExternalSecret not ready | `kubectl describe externalsecret -n dev` |
 | Push to ECR fails "tag immutable" | New commit needed |
+| Build fails at gitops push (protected branch) | Add the writer App to the gitops ruleset bypass list |
+| Argo CD apps `Unknown`, no pods, `401` in `kubectl describe application` | Wrong App ID / installation ID / key in `gitops-repo`; see step 7 fix |
+| `04_run_pipeline.py` HTTP 404 | Wrong `GITHUB_ORG`, repo name or `BRANCH` |
 | CI 403 writing gitops | App not installed on `gitops` or missing Contents: write |

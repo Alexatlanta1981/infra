@@ -40,6 +40,19 @@ cd scripts
 python3 01_install_prerequisites.py          # then 02 ... 06 in order
 ```
 
+Build and deploy with presets (replace the `<...>` values; see the runbook, step 8):
+
+```bash
+GITHUB_ORG=<GITHUB_ORG> FRONTEND_REPO=<FRONTEND_REPO> BACKEND_REPO=<BACKEND_REPO> BRANCH=<BRANCH> \
+  AWS_PROFILE=<AWS_SSO_PROFILE> python3 04_run_pipeline.py
+AWS_PROFILE=<AWS_SSO_PROFILE> python3 05_deploy_services.py
+```
+
+Notes:
+- Use the **reader** GitHub App for Argo CD (script 02) and the **writer** App for CI. The installation ID is never the App ID.
+- CI pushes image tags to gitops `main`; the writer App must be on the ruleset bypass list.
+- ECR tags are immutable (`sha-<commit>`); rebuilding the same commit needs a new commit or emptied repos.
+
 Optional presets (skip prompts or tune behavior):
 
 | Variable | Used by | Meaning |
@@ -52,6 +65,54 @@ Optional presets (skip prompts or tune behavior):
 | `TRIGGER_DELAY` | 04 | Seconds between workflow triggers. |
 
 Full procedure and teardown: [DEPLOY-RUNBOOK](../docs/DEPLOY-RUNBOOK.md). Reference examples: [SCRIPT-LIBRARY](../docs/SCRIPT-LIBRARY.md).
+
+## GitHub Apps: how many, where they go
+
+Two GitHub Apps are needed. Both are owned by the org/account that owns the repos and installed on the `gitops` repo only.
+
+| # | App | Permission | Used by | Where the credentials go |
+|---|---|---|---|---|
+| 1 | **Writer** (CI) | Contents: **write**, Pull requests: write, Metadata: read | `backend` and `frontend` CI, to push image tags to gitops | In **each** of `backend` and `frontend`, `dev` environment: variable `GITOPS_APP_ID` = App ID, secret `GITOPS_APP_PRIVATE_KEY` = `.pem` contents. Also add the App to the gitops ruleset bypass list. |
+| 2 | **Reader** (Argo CD) | Contents: **read** (read-only), Metadata: read | Argo CD in the cluster, to read gitops | Kubernetes secret `gitops-repo` in namespace `argocd`, created by script 02: App ID, installation ID, and `.pem` path prompts. |
+
+That is 2 Apps, 2 private keys, and 1 installation ID per App. The installation ID is only needed for the reader (script 02). The installation ID is never the App ID. Do not reuse a key across Apps.
+
+## Validation commands
+
+Replace `<ORG>` with your GitHub owner and `<AWS_SSO_PROFILE>` with your AWS profile.
+
+```bash
+# GitHub App settings in CI repos (writer App)
+gh variable list -R <ORG>/backend  --env dev    # GITOPS_APP_ID present
+gh variable list -R <ORG>/frontend --env dev
+gh secret list   -R <ORG>/backend  --env dev    # GITOPS_APP_PRIVATE_KEY present
+gh secret list   -R <ORG>/frontend --env dev
+
+# Writer App can bypass the gitops ruleset
+gh api repos/<ORG>/gitops/rulesets --jq '.[].id'
+gh api repos/<ORG>/gitops/rulesets/<RULESET_ID> --jq '.bypass_actors'
+
+# Builds and images
+gh run list -R <ORG>/backend --limit 8          # all success
+gh run list -R <ORG>/frontend --limit 1
+aws ecr describe-images --repository-name <ECR_REPO> --query 'imageDetails[].imageTags'
+git -C ~/devops/chris/gitops pull && git -C ~/devops/chris/gitops log --oneline -10   # ci(dev) tag commits
+
+# Cluster
+export AWS_PROFILE=<AWS_SSO_PROFILE>
+kubectl get pods -n argocd
+kubectl get clustersecretstore                  # Valid
+kubectl get externalsecret -A                   # SecretSynced
+kubectl get applications -n argocd              # Synced + Healthy
+kubectl get pods -n dev                         # all 1/1 Running
+kubectl get ingress -n dev                      # ADDRESS filled in
+kubectl describe application <APP>-dev -n argocd | grep -i -A3 "error\|401"   # no 401
+
+# Endpoints
+curl -s -o /dev/null -w '%{http_code}\n' http://<ALB_HOSTNAME>/        # 200
+curl -s -o /dev/null -w '%{http_code}\n' http://<ALB_HOSTNAME>/api/    # 200/401/403/404, not 502/503
+echo 1 | python3 06_verify_deployment.py
+```
 
 ## Why it is designed this way
 
