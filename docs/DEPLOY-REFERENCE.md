@@ -683,6 +683,17 @@ kubectl annotate applications -n argocd --all argocd.argoproj.io/refresh=hard --
 
 ### 7.C Configure External Secrets (script 03)
 
+Script 03 requires Helm and first runs an ESO Helm install/upgrade with CRDs
+enabled, existing release values reused, and the selected IRSA role set on its
+service account. It checks certificate-controller pods for both Running and Ready;
+Running alone (including a failing HTTP 500 readiness probe) does not pass.
+Absent or unready pods trigger another Helm upgrade after a 30-second sleep.
+There are at most 10 attempts and 9 sleeps. Helm/API failures stop immediately.
+Command execution time is additional to the 30-second retry delay.
+Required CRDs must also be established before continuing. If readiness attempts
+are exhausted, the script exits with an error without creating a
+ClusterSecretStore or ExternalSecrets.
+
 ```bash
 cd ~/devops/infra/scripts
 python3 03_setup_external_secrets.py

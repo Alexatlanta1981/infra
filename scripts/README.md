@@ -27,6 +27,13 @@ command arguments. The generated Secret manifest is captured and passed to
 outside Git and restrict access to the intended workstation user. This change
 does not alter GitHub App permissions, AWS SSO, OIDC, or IRSA.
 
+Script 03 first installs/upgrades ESO and gates secret setup on certificate-controller
+pods being Running and Ready and the required CRDs being established. It allows
+10 readiness attempts, sleeping 30 seconds before each retry Helm upgrade.
+It reuses release values and supplies the selected IRSA role on each upgrade.
+Exhaustion stops setup before creating the ClusterSecretStore or ExternalSecrets;
+Helm or Kubernetes command failures stop immediately.
+
 Bucket creation, input values, confirmation, and the creation report are documented in [deployment runbook step 2](../docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites). Run script 00 there before Terraform bootstrap; run scripts 01-06 after Terraform creates the cluster.
 
 ## Step 3: set up GitHub settings (start here after Terraform bootstrap)
