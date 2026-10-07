@@ -42,6 +42,37 @@ Two Terraform roots with **separate state keys** in your own S3 state bucket:
 
 ## Running it
 
+### Deployment fixes verified on October 6, 2026
+
+- **ESO certificate-controller readiness (Script 03):** Helm install/upgrade now
+  gates secret setup on certificate-controller pods being Running and Ready and
+  the required CRDs being established. A Running pod with readiness HTTP 500 is
+  not accepted. Up to 10 attempts are allowed, with 30 seconds between retry
+  upgrades. Release values and the selected IRSA role are retained. Exhaustion
+  or command failure stops before ClusterSecretStore/ExternalSecret creation.
+  The live retry-gate run restored the missing ExternalSecret CRD and synced both
+  secrets on its first upgrade; the original CRD disappearance cause is unproven.
+- **Argo CD reader key handling (Script 02):** private-key contents no longer
+  appear in command arguments; kubectl reads the key file and receives the
+  generated Secret manifest through captured standard input.
+- **Application identity (Script 05):** monitoring uses the applied manifest's
+  Application name, not the service menu label. Incomplete deployment returns
+  failure. All nine dev Applications were verified Synced/Healthy live.
+- **Verification (Script 06):** after refreshing expired workstation SSO,
+  pods were Ready, ExternalSecrets were synced and the frontend returned HTTP
+  200. Six backend HTTP checks returned 404/401; these remain application-team
+  follow-up, not platform fixes. SSO/OIDC/IRSA remain unchanged.
+- **Tag backup and staged teardown (Script 07):** the local script uploaded and
+  read-back verified ECR tag/digest metadata in S3 before Kubernetes-only teardown.
+  The live run removed dev workloads and base add-ons while retaining Terraform
+  infrastructure. See [the destroy procedure](docs/DEPLOY-REFERENCE.md#11-tear-down-reverse-order-terraform-last).
+  The metadata backup is not an image archive.
+
+**ECR rebuild/reuse changes are deferred.** Script 04's local recovery prototype
+is not part of the approved rebuild procedure. Full Terraform destroy deletes
+ECR repositories and their images; rebuilding afterward requires fresh image
+builds, not restoration from the tag JSON.
+
 ### Run in your own AWS account (including recruiter demos)
 
 You do not need the original author's AWS account or SSO profile. Use an AWS account where you are authorized through IAM Identity Center (SSO), and fork or copy all four companion repositories into your own GitHub owner while retaining the names `infra`, `backend`, `frontend`, and `gitops`. Configure Actions variables, secrets, OIDC subjects, and the `dev` approval environment on your own repositories; these settings are not supplied by cloning this repository.
