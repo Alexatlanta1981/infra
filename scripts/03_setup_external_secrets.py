@@ -11,6 +11,7 @@
 # Run from the root of the dpp-assignment3 directory.
 # =============================================================================
 
+import json
 import os
 import shutil
 import subprocess
@@ -50,6 +51,52 @@ def kubectl_apply_yaml(yaml_str):
     result = subprocess.run(["kubectl", "apply", "-f", "-"], input=yaml_str, text=True)
     if result.returncode != 0:
         die("kubectl apply failed.")
+
+def ensure_eso_ready(role_arn):
+    run_cmd(["helm", "repo", "add", "external-secrets",
+             "https://charts.external-secrets.io", "--force-update"])
+    run_cmd(["helm", "repo", "update", "external-secrets"])
+    for attempt in range(1, 11):
+        info(f"ESO Helm install/upgrade and readiness check {attempt}/10")
+        run_cmd([
+            "helm", "upgrade", "--install", "external-secrets",
+            "external-secrets/external-secrets", "--namespace", "external-secrets",
+            "--create-namespace", "--reuse-values",
+            "--set", "installCRDs=true",
+            "--set", f"serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn={role_arn}",
+        ])
+        result = subprocess.run([
+            "kubectl", "get", "pods", "-n", "external-secrets",
+            "-l", "app.kubernetes.io/name=external-secrets-cert-controller",
+            "-o", "json",
+        ], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(result.stderr.strip(), file=sys.stderr)
+            die("Failed to inspect ESO certificate-controller pods.")
+        pods = [pod for pod in json.loads(result.stdout)["items"]
+                if not pod["metadata"].get("deletionTimestamp")]
+        ready = bool(pods) and all(
+            pod.get("status", {}).get("phase") == "Running"
+            and any(condition.get("type") == "Ready"
+                    and condition.get("status") == "True"
+                    for condition in pod.get("status", {}).get("conditions", []))
+            for pod in pods
+        )
+        if ready:
+            run_cmd([
+                "kubectl", "wait", "--for=condition=established",
+                "crd/clustersecretstores.external-secrets.io",
+                "crd/externalsecrets.external-secrets.io", "--timeout=60s",
+            ])
+            log("ESO certificate-controller is Ready and required CRDs are established.")
+            return
+        warn("ESO certificate-controller pods are absent or not Running and Ready.")
+        if attempt < 10:
+            info("Waiting 30 seconds before the next Helm upgrade.")
+            time.sleep(30)
+    die("ESO certificate-controller was not Ready after 10 attempts. "
+        "ClusterSecretStore and ExternalSecrets were not created. "
+        "Inspect certificate-controller logs and namespace events.")
 
 # ---------------------------------------------------------------------------
 # Input helpers
@@ -98,8 +145,9 @@ def prompt_choice(var_name, label, choices):
 # ---------------------------------------------------------------------------
 # Verify tools
 # ---------------------------------------------------------------------------
-if subprocess.run(["which", "kubectl"], capture_output=True).returncode != 0:
-    die("kubectl not found.")
+for tool in ["kubectl", "helm"]:
+    if subprocess.run(["which", tool], capture_output=True).returncode != 0:
+        die(f"{tool} not found.")
 
 # ---------------------------------------------------------------------------
 # Collect inputs
@@ -154,6 +202,8 @@ if confirm.upper() != "Y":
     print("Aborted.")
     sys.exit(0)
 print()
+
+ensure_eso_ready(ESO_ROLE_ARN)
 
 # ---------------------------------------------------------------------------
 # Ensure target namespace exists

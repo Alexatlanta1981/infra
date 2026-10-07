@@ -27,6 +27,13 @@ command arguments. The generated Secret manifest is captured and passed to
 outside Git and restrict access to the intended workstation user. This change
 does not alter GitHub App permissions, AWS SSO, OIDC, or IRSA.
 
+Script 03 first installs/upgrades ESO and gates secret setup on certificate-controller
+pods being Running and Ready and the required CRDs being established. It allows
+10 readiness attempts, sleeping 30 seconds before each retry Helm upgrade.
+It reuses release values and supplies the selected IRSA role on each upgrade.
+Exhaustion stops setup before creating the ClusterSecretStore or ExternalSecrets;
+Helm or Kubernetes command failures stop immediately.
+
 Script 05 uses the applied Application object's `metadata.name` as the source
 of truth for sync/health monitoring and reporting, rather than the menu's service
 label. Skipped, degraded, or timed-out Applications cause a nonzero exit;
@@ -284,7 +291,7 @@ Script changes go through a pull request to **`main`**. CI tests them automatica
 | `static` | `py_compile` plus `ruff` (syntax, undefined names, unused code) on `scripts/*.py` |
 | `static` (shell checks) | Bash syntax checks and mocked GitHub settings setup tests; no real AWS or GitHub changes |
 | `bootstrap smoke (01-03, kind)` | Spins up a throwaway `kind` cluster, runs scripts 01–03 with dummy AWS values, and asserts Argo CD, External Secrets, the `dev` namespace, the repo secret, the `mackllc` AppProject, the ClusterSecretStore and ExternalSecrets exist |
-| `app layer (04-06, kind)` | Fresh `kind` cluster plus the real `gitops` repo; runs 01–06 with a fake `gh` CLI so no real builds start |
+| `app layer (04-06, kind)` | Fresh `kind` cluster plus the real `gitops` repo; runs 01–06 with a fake `gh` CLI so no real builds start. Script 05 must create all nine Applications and exit 1 for incomplete sync; script 06 must report failure because application images are not available on kind |
 
 Defined in `.github/workflows/scripts-test.yml`. It runs on any PR or push to `main` that touches `scripts/**`, or manually (`gh workflow run scripts-test.yml`).
 
