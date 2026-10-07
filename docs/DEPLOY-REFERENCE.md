@@ -781,6 +781,12 @@ The actual tag must match the commit you built. A pull that says `Already up to 
 
 ### 9.A Deploy services (script 05)
 
+Script 05 monitors the actual Application names returned by `kubectl apply`
+from the GitOps manifests, not the service menu labels. It exits unsuccessfully
+if any selected manifest is skipped or an Application is degraded or times out.
+Investigate those results before proceeding; exit success requires every selected
+Application to reach Synced/Healthy.
+
 After step 8 succeeds, run script 05 from `~/devops/infra/scripts` in your Ubuntu/WSL terminal. Replace `<ORG>` with the GitHub owner and `<AWS_SSO_PROFILE>` with the local profile name from step 0. These are command-line values; do not add them to GitHub settings. Script 05 creates the Argo CD applications in namespace `dev`.
 
 ```bash
