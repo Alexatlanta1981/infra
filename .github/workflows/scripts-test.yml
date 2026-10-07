@@ -161,7 +161,7 @@ jobs:
           export PATH="$PATH_PREFIX:$PATH"
           printf 'A\nY\n' | python3 scripts/04_run_pipeline.py
           test "$(grep -c '^gh workflow run' "$RUNNER_TEMP/gh-calls.log")" = 9
-      - name: Script 05 (apply Argo CD Applications)
+      - name: Script 05 (apply Applications and report incomplete sync on kind)
         env:
           ENV: dev
           GITHUB_USERNAME: ${{ github.repository_owner }}
@@ -170,7 +170,12 @@ jobs:
           POLL_INTERVAL: "5"
           MAX_WAIT: "20"
         run: |
+          set +e
           printf 'A\nY\n' | python3 scripts/05_deploy_services.py
+          rc=$?
+          set -e
+          echo "05 exit code: $rc"
+          test "$rc" -eq 1
           test "$(kubectl -n argocd get applications --no-headers | wc -l)" = 9
       - name: Script 06 (must report failures - no images on kind)
         env:

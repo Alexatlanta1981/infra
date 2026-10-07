@@ -291,7 +291,7 @@ Script changes go through a pull request to **`main`**. CI tests them automatica
 | `static` | `py_compile` plus `ruff` (syntax, undefined names, unused code) on `scripts/*.py` |
 | `static` (shell checks) | Bash syntax checks and mocked GitHub settings setup tests; no real AWS or GitHub changes |
 | `bootstrap smoke (01-03, kind)` | Spins up a throwaway `kind` cluster, runs scripts 01–03 with dummy AWS values, and asserts Argo CD, External Secrets, the `dev` namespace, the repo secret, the `mackllc` AppProject, the ClusterSecretStore and ExternalSecrets exist |
-| `app layer (04-06, kind)` | Fresh `kind` cluster plus the real `gitops` repo; runs 01–06 with a fake `gh` CLI so no real builds start |
+| `app layer (04-06, kind)` | Fresh `kind` cluster plus the real `gitops` repo; runs 01–06 with a fake `gh` CLI so no real builds start. Script 05 must create all nine Applications and exit 1 for incomplete sync; script 06 must report failure because application images are not available on kind |
 
 Defined in `.github/workflows/scripts-test.yml`. It runs on any PR or push to `main` that touches `scripts/**`, or manually (`gh workflow run scripts-test.yml`).
 
