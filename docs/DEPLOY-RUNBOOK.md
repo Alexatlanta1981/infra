@@ -4,14 +4,15 @@ Follow `0.A`, `0.B`, then the remaining substeps in order. Stop on errors.
 Use your own AWS account, SSO profile, GitHub owner, and state bucket.
 Keep SSO, STS, GitHub OIDC, and IRSA; do not use static AWS keys.
 
+This runbook is reusable for this project's `infra`, `backend`, `frontend`, and
+`gitops` repositories. Supply values from your own AWS and GitHub environment.
+It is not a generic procedure for differently named repositories or workloads;
+the account must already have this project's GitHub OIDC provider and Terraform
+plan/apply roles.
+
 **Scope:** your AWS account already has the GitHub OIDC provider and Terraform
 plan/apply roles. Fresh-account onboarding is not part of this procedure.
 The bucket script creates storage only; it does not establish AWS trust.
-
-**Recorded progress, 2026-10-06:** CI apply succeeded; three EKS nodes and system
-pods were verified ready. Writer App verified and reused. Next: **6.B, reader App**.
-Administrator bypass was subsequently enabled by explicit request; the reviewer
-remains configured. Use your own latest checks, not this record, for deployment.
 
 ## 0. Workstation tools (once)
 
@@ -22,13 +23,25 @@ and OpenSSL. Later cluster steps also need Python >= 3.10, kubectl, Helm, and yq
 
 ### 0.B Set your inputs
 
-Replace the example values. Keep this terminal open.
+Run this in an Ubuntu/WSL Bash terminal and answer the prompts. Keep this
+terminal open so the values remain available to later commands.
 
 ```bash
-export AWS_PROFILE=your-sso-profile
-export AWS_REGION=us-east-1
-export GITHUB_ORG=your-github-owner
-export WORKSPACE="$HOME/devops"
+read -r -p "AWS SSO profile name: " AWS_PROFILE
+read -r -p "AWS region [us-east-1]: " AWS_REGION_INPUT
+read -r -p "GitHub owner for the four repositories: " GITHUB_ORG
+read -r -p "Workspace directory [$HOME/devops]: " WORKSPACE_INPUT
+AWS_REGION=${AWS_REGION_INPUT:-us-east-1}
+WORKSPACE=${WORKSPACE_INPUT:-$HOME/devops}
+while [[ -z "$AWS_PROFILE" ]]; do
+  read -r -p "AWS SSO profile name (required): " AWS_PROFILE
+done
+while [[ -z "$GITHUB_ORG" ]]; do
+  read -r -p "GitHub owner (required): " GITHUB_ORG
+done
+export AWS_PROFILE AWS_REGION GITHUB_ORG WORKSPACE
+printf 'AWS_PROFILE=%s\nAWS_REGION=%s\nGITHUB_ORG=%s\nWORKSPACE=%s\n' \
+  "$AWS_PROFILE" "$AWS_REGION" "$GITHUB_ORG" "$WORKSPACE"
 ```
 
 ### 0.C Authenticate and verify
@@ -44,7 +57,7 @@ Then:
 ```bash
 gh auth login
 aws sso login --profile "$AWS_PROFILE" &&
-aws sts get-caller-identity &&
+aws sts get-caller-identity --profile "$AWS_PROFILE" &&
 gh auth status
 ```
 
@@ -59,13 +72,30 @@ to someone else's AWS account.
 For your own deployment, fork/copy `infra`, `backend`, `frontend`, and `gitops`
 under your GitHub owner, keeping those names. Forks do not inherit Actions settings.
 
-For missing clones only:
+This creates missing clones and reuses existing Git clones only when their
+`origin` points to the matching repository under your GitHub owner.
 
 ```bash
-mkdir -p "$WORKSPACE"
-cd "$WORKSPACE"
+mkdir -p "$WORKSPACE" &&
+cd "$WORKSPACE" || exit 1
 for repo in infra backend frontend gitops; do
-  git clone "https://github.com/$GITHUB_ORG/$repo.git" || break
+  if git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    origin=$(git -C "$repo" remote get-url origin) || exit 1
+    case "$origin" in
+      "https://github.com/$GITHUB_ORG/$repo"|"https://github.com/$GITHUB_ORG/$repo.git"|"git@github.com:$GITHUB_ORG/$repo"|"git@github.com:$GITHUB_ORG/$repo.git")
+        ;;
+      *)
+        printf 'Error: %s origin is %s, not your expected GitHub repository; inspect it before continuing.\n' "$repo" "$origin" >&2
+        exit 1
+        ;;
+    esac
+    printf 'Using existing clone: %s/%s\n' "$WORKSPACE" "$repo"
+  elif [[ -e "$repo" ]]; then
+    printf 'Error: %s exists but is not a Git clone; inspect it before continuing.\n' "$repo" >&2
+    exit 1
+  else
+    git clone "https://github.com/$GITHUB_ORG/$repo.git" "$repo" || exit 1
+  fi
 done
 ```
 
@@ -82,10 +112,14 @@ If output is not empty, preserve your changes before continuing. Otherwise:
 cd "$WORKSPACE/infra"
 git switch main &&
 git pull --ff-only origin main &&
-ls scripts/00_create_state_bucket.sh scripts/00_setup_github_settings.sh
+bash scripts/00_create_state_bucket.sh --help &&
+bash scripts/00_setup_github_settings.sh --help
 ```
 
-**Check:** both scripts exist here. Another worktree does not update this clone.
+The `--help` calls run each script without changing AWS or GitHub. The bucket
+script is run for real only in step 2.A for a genuinely new deployment. The
+GitHub settings script is run for real in step 3.B. Another worktree does not
+update this clone.
 
 ## 2. One-time AWS prerequisites
 
@@ -116,9 +150,13 @@ the original state before planning.
 and that GitHub OIDC and CI roles already exist, then:
 
 ```bash
-export STATE_BUCKET=your-unique-terraform-state-bucket
-cd "$WORKSPACE/infra/scripts"
-./00_create_state_bucket.sh "$STATE_BUCKET"
+read -r -p "New globally unique Terraform state bucket name: " STATE_BUCKET
+while [[ -z "$STATE_BUCKET" ]]; do
+  read -r -p "Bucket name is required; enter it to continue: " STATE_BUCKET
+done
+export STATE_BUCKET
+cd "$WORKSPACE/infra/scripts" &&
+bash ./00_create_state_bucket.sh "$STATE_BUCKET"
 ```
 
 Check the displayed account, region, and bucket before answering `y`.
@@ -128,8 +166,8 @@ plan-role state policy matches bucket names containing it.
 ### 2.B Generate OIDC subjects
 
 ```bash
-cd "$WORKSPACE/infra/scripts"
-SUBJECTS_JSON=$(./00_oidc_subjects.sh) &&
+cd "$WORKSPACE/infra/scripts" &&
+SUBJECTS_JSON=$(bash ./00_oidc_subjects.sh) &&
 export SUBJECTS_JSON &&
 printf '%s\n' "$SUBJECTS_JSON"
 ```
@@ -192,8 +230,8 @@ Use `arn:aws:iam::...:role/...`, not the STS session ARN.
 ### 3.B Run settings setup
 
 ```bash
-cd "$WORKSPACE/infra/scripts"
-./00_setup_github_settings.sh
+cd "$WORKSPACE/infra/scripts" &&
+bash ./00_setup_github_settings.sh
 ```
 
 Enter your SSO admin role ARN. Enter preserves an existing value or skips it;
@@ -222,7 +260,11 @@ Secret values must not appear in output.
 
 ```bash
 for repo in infra backend frontend gitops; do
-  gh api "repos/$GITHUB_ORG/$repo/actions/oidc/customization/sub" || break
+  printf '\nOIDC settings for %s/%s:\n' "$GITHUB_ORG" "$repo"
+  gh api "repos/$GITHUB_ORG/$repo/actions/oidc/customization/sub" || {
+    printf 'Failed to read OIDC settings for %s/%s; stopping.\n' "$GITHUB_ORG" "$repo" >&2
+    exit 1
+  }
 done
 ```
 
@@ -270,11 +312,6 @@ Read the plan totals and resource changes; a green check alone is not approval.
 - Leave deployment approval pending. Do not dispatch apply or approve a queued run.
 - Manual `bootstrap.yml` dispatch is **not plan-only**.
 - Never run `envs/dev` apply locally. EKS/RDS infrastructure incurs AWS charges.
-
-**Recorded checkpoint, 2026-10-06:** PR #44 merged after required plan checks
-passed. Bootstrap: no changes. Dev: 149 additions, 0 changes, 0 deletions.
-Administrator bypass was disabled and verified. These results describe that
-deployment, not a fresh account; inspect your own latest plan.
 
 ## After explicit apply approval
 
@@ -393,20 +430,38 @@ key available; intended cluster nodes ready. Never share keys in logs or a PR.
 Follow [script 01 and private password retrieval](DEPLOY-REFERENCE.md#7a-install-cluster-prerequisites-script-01).
 Never print credentials in CI or share terminal recordings.
 
-Supply your cluster name, region, ALB IRSA role ARN, and GitOps path; the script
-does not guess project/environment names. It uses AWS SSO and discovers the VPC.
+Run this in the same Ubuntu/WSL Bash terminal after the cluster is ready. The
+script prompts for your cluster name, region, ALB IRSA role ARN, and GitOps path;
+it does not guess project/environment names. It uses AWS SSO and discovers the VPC.
+
+```bash
+cd "$WORKSPACE/infra/scripts" &&
+python3 01_install_prerequisites.py
+```
+
 Argo CD Ingress is off by default (port-forward access). Enable it explicitly
 with your hostname and ACM certificate; choose the ALB scheme and optional
-group for your deployment. See step 7.A above for exact inputs.
+group for your deployment. The script prompts for these values if you choose
+to enable Ingress; do not paste example hostnames or certificate ARNs literally.
 
 ### 7.B Connect Argo CD to gitops (script 02)
 
 Follow [script 02](DEPLOY-REFERENCE.md#7b-connect-argo-cd-to-gitops-script-02)
 with your own GitOps URL and reader App credentials.
 
+```bash
+cd "$WORKSPACE/infra/scripts" &&
+python3 02_bootstrap_argocd.py
+```
+
 ### 7.C Configure External Secrets (script 03)
 
 Follow [script 03 and verification](DEPLOY-REFERENCE.md#7c-configure-external-secrets-script-03).
+
+```bash
+cd "$WORKSPACE/infra/scripts" &&
+python3 03_setup_external_secrets.py
+```
 
 ## 8. Build the images
 
