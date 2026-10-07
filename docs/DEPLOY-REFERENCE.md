@@ -920,6 +920,63 @@ kubectl config current-context
 
 The account must be your intended dev account and the context should identify `mackllc-dev-cluster`, for example `arn:aws:eks:us-east-1:123456789012:cluster/mackllc-dev-cluster`. The commands below delete all applications and Ingresses in that cluster; use them only for the dedicated platform cluster, not a shared cluster.
 
+### Tag backup and Kubernetes-only rebuild
+
+Use this alternative when retaining Terraform infrastructure. It does **not**
+authorize the full AWS destroy in 11.E. EKS, RDS, VPC, IAM, ECR images/repositories
+and the backup bucket all remain. A tag/digest JSON cannot restore deleted image
+layers. Do not delete ECR repositories/images or allow lifecycle cleanup/concurrent
+pushes during this procedure.
+
+Use your intended SSO profile and region. Choose an existing S3 bucket you can
+write/read and a **new object key for every backup**. The script never overwrites
+an existing recovery point. It requires ECR describe access, S3 PutObject/GetObject,
+and, for recovery, ECR BatchGetImage/PutImage. It does not create buckets or change IAM.
+
+Backup only (safe default; select `A`, `F`, `B` or comma-separated service names):
+
+```bash
+python3 scripts/07_preserve_tags_teardown.py \
+  --backup-uri s3://YOUR-BACKUP-BUCKET/tag-backups/UNIQUE-RUN.json \
+  --services A
+```
+
+The JSON includes schema version, AWS account/region, UTC timestamp, repository
+names, all tags/digests (including untagged digests), tag-to-digest mappings and
+image push metadata. Upload, parsed read-back equality and an unchanged ECR
+inventory must all succeed before any teardown command.
+
+After separate teardown approval, run with the exact intended context:
+
+```bash
+python3 scripts/07_preserve_tags_teardown.py \
+  --backup-uri s3://YOUR-BACKUP-BUCKET/tag-backups/ANOTHER-UNIQUE-RUN.json \
+  --services A --namespace dev \
+  --context arn:aws:eks:YOUR-REGION:YOUR-ACCOUNT:cluster/YOUR-CLUSTER \
+  --teardown --remove-addons
+```
+
+This requires typed context confirmation, deletes the selected namespace's
+Applications/Ingresses, and waits up to 300 seconds for its specific ALB to
+disappear. It then deletes the workload namespace while ESO is still running,
+and optionally uninstalls Argo CD, ESO and the ALB controller and removes
+`argocd`/`external-secrets`. It never deletes `kube-system`, the cluster, AWS
+infrastructure or Terraform state. It stops on errors/timeouts without forcing
+finalizers. Shared ALBs block teardown; other Applications/Ingresses or
+unrelated Helm releases in the dedicated addon namespaces block addon removal.
+Omit `--remove-addons` to keep base controllers installed.
+
+**ECR recovery/reuse is deferred.** Do not enable the local Script 04 recovery
+prototype as part of this runbook. Tag backup does not prevent duplicate pushes
+to immutable tags and cannot restore deleted image layers.
+
+If retaining infrastructure, stop here. If separately approving full AWS
+destruction, continue at 11.E only after Script 07 succeeds. Full Terraform
+destroy deletes ECR images as well as repositories. After a full destroy,
+re-provision Terraform infrastructure, run scripts 01-03, then run the normal
+Script 04 builds against recreated repositories before scripts 05-06. Do not
+set `TAG_BACKUP_S3_URI` for that fresh-image rebuild.
+
 ### 11.A Delete the Argo apps
 ```bash
 kubectl -n argocd delete applications --all
@@ -975,8 +1032,30 @@ An empty Helm listing still prints its column header. Other releases may remain;
 ### 11.E Destroy AWS (VPC, EKS, RDS, ECR, workload IAM) via CI
 
 The OIDC provider and CI roles in `envs/bootstrap` are intentionally left in place.
+The existing S3 state bucket and Script 07 backup objects are also retained.
+**This phase deletes ECR repositories and all their images (`force_delete=true`),
+as well as the dev cluster, database, network and workload IAM.** Script 07's JSON
+cannot recover deleted image layers. Obtain explicit full-dev destroy approval;
+a successful Kubernetes-only teardown is not approval for this phase.
+
+Run Script 07 from the reviewed local checkout before this phase:
+
 ```bash
-gh workflow run terraform.yml -R <ORG>/infra -f action=destroy -f confirm_destroy=destroy
+python3 scripts/07_preserve_tags_teardown.py \
+  --backup-uri s3://YOUR-STATE-BUCKET/ecr-tag-backups/UNIQUE-RUN-dev-teardown.json \
+  --services A --namespace dev \
+  --context arn:aws:eks:YOUR-REGION:YOUR-ACCOUNT:cluster/YOUR-CLUSTER \
+  --teardown --remove-addons
+```
+
+Require exit code 0 and the backup/read-back and Kubernetes teardown verification
+messages. Stop on errors; do not bypass cleanup finalizers or delete the cluster
+before its ALB is removed. If Script 07 has already completed this teardown,
+do not rerun it against removed controllers.
+
+Then dispatch the existing dev destroy workflow on `main`:
+```bash
+gh workflow run terraform.yml -R <ORG>/infra --ref main -f action=destroy -f confirm_destroy=destroy
 gh run list -R <ORG>/infra --workflow terraform.yml --limit 1
 ```
 Approve the run in the `dev` environment (GitHub > Actions > the run > Review deployments). Verify: the run shows `completed success`.

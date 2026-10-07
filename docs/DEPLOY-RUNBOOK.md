@@ -424,6 +424,14 @@ Follow [PR and rollout steps](DEPLOY-REFERENCE.md#10-day-2-shipping-a-change).
 
 Requires separate approval. Follow [reverse-order teardown](DEPLOY-REFERENCE.md#11-tear-down-reverse-order-terraform-last);
 verify account/cluster and preserve the state bucket and bootstrap CI identity.
+To retain Terraform infrastructure and ECR images, use
+[Script 07 tag preservation and Kubernetes-only teardown](DEPLOY-REFERENCE.md#tag-backup-and-kubernetes-only-rebuild)
+instead of the AWS destroy phase. Script 07 defaults to backup only; teardown
+still requires separate approval.
+After Script 07 succeeds, a separately approved
+[full dev Terraform destroy](DEPLOY-REFERENCE.md#11e-destroy-aws-vpc-eks-rds-ecr-workload-iam-via-ci)
+also deletes ECR images. The tag JSON cannot restore image content; fresh image
+builds are required afterward. ECR recovery/reuse changes remain deferred.
 
 ## Troubleshooting
 

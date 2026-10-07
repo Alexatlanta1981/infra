@@ -1,6 +1,6 @@
 # SAAS - HENRY FORD (infra scripts)
 
-Six numbered Python scripts that take a bare EKS cluster (built by Terraform) to running services: install cluster add-ons, connect Argo CD to `gitops`, sync secrets, build images, deploy, verify.
+Scripts 01-06 take a bare EKS cluster (built by Terraform) to running services: install cluster add-ons, connect Argo CD to `gitops`, sync secrets, build images, deploy, verify. Script 07 preserves ECR tag metadata before optional Kubernetes-only teardown.
 
 Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops), [backend](https://github.com/Alexatlanta1981/backend), [frontend](https://github.com/Alexatlanta1981/frontend). Parent: [infra README](../README.md).
 
@@ -18,6 +18,34 @@ Companion repos: [gitops](https://github.com/Alexatlanta1981/gitops), [backend](
 
 Scripts 01-06 prompt for what they need, skip prompts already satisfied by the environment, and can be re-run safely. `00_create_state_bucket.sh` is a one-time AWS bootstrap step and is not intended to be re-run after bucket creation. `00_setup_github_settings.sh` runs after Terraform bootstrap and can be re-run to verify or update GitHub settings without rotating an existing JWT secret.
 
+### Script 07: preserve tag metadata before staged teardown
+
+See [the preservation procedure](../docs/DEPLOY-REFERENCE.md#tag-backup-and-kubernetes-only-rebuild)
+before any deletion. Script 07 defaults to **backup only**. It inventories every
+tag and digest, uploads a versioned-schema JSON to a unique S3 key without
+overwriting an existing backup, reads it back, and checks that ECR inventory has
+not changed. Any failure blocks teardown.
+
+`--teardown` requires all services, an exact account/region-matching EKS context,
+and typed confirmation. It removes only the selected workload namespace and its
+Applications/Ingresses, waiting for that namespace's ALB to disappear while the
+ALB controller remains running. ESO remains running until namespace finalizers
+are resolved. `--remove-addons` additionally removes the three base Helm releases
+and their dedicated namespaces (never `kube-system`); other Applications,
+Ingresses or Helm releases in those addon namespaces block that option.
+There is no force-finalizer bypass.
+
+EKS, VPC, RDS, IAM, ECR repositories/images, S3 and Terraform state are retained.
+The JSON is **metadata, not an image archive**: it cannot recreate deleted layers.
+Do not run image cleanup/lifecycle deletion or concurrent image pushes during
+backup/teardown. Repositories must remain available for recovery.
+
+**Script 04 ECR recovery/reuse changes are deferred.** The local prototype is
+not part of the approved rebuild procedure. Do not set `TAG_BACKUP_S3_URI` for
+normal builds. Full Terraform destroy deletes ECR images/repositories; fresh
+builds are required after infrastructure is recreated. Tag metadata is retained
+as a record, not as an image-content backup.
+
 Script 01 does not retrieve or print the Argo CD administrator password. Use the explicit private-terminal retrieval instructions in [runbook step 7.A](../docs/DEPLOY-RUNBOOK.md#7a-install-cluster-prerequisites-script-01) only when you need UI access. Script 02 requires your own GitOps HTTPS URL through `GITOPS_REPO_URL` or its prompt; there is no personal repository default.
 
 Script 02 loads the reader App private key from `GITHUB_APP_KEY_PATH` using
@@ -27,12 +55,15 @@ command arguments. The generated Secret manifest is captured and passed to
 outside Git and restrict access to the intended workstation user. This change
 does not alter GitHub App permissions, AWS SSO, OIDC, or IRSA.
 
-Script 03 first installs/upgrades ESO and gates secret setup on certificate-controller
+**ESO certificate-controller fix:** Script 03 first installs/upgrades ESO and gates secret setup on certificate-controller
 pods being Running and Ready and the required CRDs being established. It allows
 10 readiness attempts, sleeping 30 seconds before each retry Helm upgrade.
 It reuses release values and supplies the selected IRSA role on each upgrade.
 Exhaustion stops setup before creating the ClusterSecretStore or ExternalSecrets;
 Helm or Kubernetes command failures stop immediately.
+A Running pod with readiness HTTP 500 is not Ready and cannot pass this gate.
+The live test restored the missing ExternalSecret CRD and synced secrets on
+its first Helm upgrade; the cause of the original missing CRD is unproven.
 
 Script 05 uses the applied Application object's `metadata.name` as the source
 of truth for sync/health monitoring and reporting, rather than the menu's service
