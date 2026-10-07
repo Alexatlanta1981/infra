@@ -9,6 +9,7 @@
 # Run from anywhere — paths are resolved relative to this script's location.
 # =============================================================================
 
+import json
 import os
 import subprocess
 import sys
@@ -83,9 +84,27 @@ def prompt_choice(var_name, label, choices):
     return value
 
 def kubectl_apply_yaml(yaml_str):
-    r = subprocess.run(["kubectl", "apply", "-f", "-"], input=yaml_str, text=True)
+    r = subprocess.run(["kubectl", "apply", "-f", "-", "-o", "json"],
+                       input=yaml_str, text=True, capture_output=True)
     if r.returncode != 0:
+        print(r.stderr.strip(), file=sys.stderr)
         die("kubectl apply failed.")
+    try:
+        resource = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        die("kubectl apply returned invalid JSON; cannot identify the applied Application.")
+    if not isinstance(resource, dict):
+        die("kubectl apply did not return an Application object.")
+    metadata = resource.get("metadata", {})
+    if not isinstance(metadata, dict):
+        die("Applied Application has invalid metadata.")
+    name = metadata.get("name")
+    if (resource.get("kind") != "Application"
+            or resource.get("apiVersion") != "argoproj.io/v1alpha1"
+            or metadata.get("namespace") != "argocd"
+            or not isinstance(name, str) or not name):
+        die("Expected one named Argo CD Application in namespace argocd.")
+    return name
 
 # ---------------------------------------------------------------------------
 # Service catalogue
@@ -224,9 +243,9 @@ for name, yaml_file in selected:
     with open(yaml_path) as f:
         content = f.read().replace("your-github-username", GITHUB_USERNAME).replace("your-aws-account-id", AWS_ACCOUNT_ID)
 
-    kubectl_apply_yaml(content)
-    log(f"  ArgoCD Application '{name}' applied.")
-    applied.append(name)
+    application_name = kubectl_apply_yaml(content)
+    log(f"  ArgoCD Application '{application_name}' applied for service '{name}'.")
+    applied.append(application_name)
 
 # ---------------------------------------------------------------------------
 # Wait for ArgoCD to sync
@@ -268,7 +287,7 @@ try:
                 log(f"{name}: Synced & Healthy")
             elif health == "Degraded":
                 results[name] = "Degraded"
-                warn(f"{name}: Degraded — check logs: kubectl logs -n {ENV} deployment/{name}")
+                warn(f"{name}: Degraded — inspect: kubectl describe application {name} -n argocd")
             else:
                 info(f"{name}: sync={sync}, health={health}  ({elapsed}s elapsed)")
                 still_pending.append(name)
@@ -323,4 +342,7 @@ if alb_hostname:
 print()
 print("  ArgoCD UI : kubectl port-forward svc/argocd-server -n argocd 8080:443")
 print()
+if skipped or any(results.get(name) != "Synced/Healthy" for name in applied):
+    die("Deployment incomplete: some selected Applications were skipped, degraded, "
+        "or did not reach Synced/Healthy. Inspect their status before proceeding.")
 print("Next step: python3 scripts/06_verify_deployment.py")

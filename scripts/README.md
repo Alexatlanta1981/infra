@@ -34,6 +34,11 @@ It reuses release values and supplies the selected IRSA role on each upgrade.
 Exhaustion stops setup before creating the ClusterSecretStore or ExternalSecrets;
 Helm or Kubernetes command failures stop immediately.
 
+Script 05 uses the applied Application object's `metadata.name` as the source
+of truth for sync/health monitoring and reporting, rather than the menu's service
+label. Skipped, degraded, or timed-out Applications cause a nonzero exit;
+the next-step message is shown only when all selected Applications are Synced/Healthy.
+
 Bucket creation, input values, confirmation, and the creation report are documented in [deployment runbook step 2](../docs/DEPLOY-RUNBOOK.md#2-one-time-aws-prerequisites). Run script 00 there before Terraform bootstrap; run scripts 01-06 after Terraform creates the cluster.
 
 ## Step 3: set up GitHub settings (start here after Terraform bootstrap)
